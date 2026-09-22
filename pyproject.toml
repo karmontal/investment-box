@@ -19,6 +19,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "tenacity>=9.0",
     "python-telegram-bot>=21.9",
+    "scikit-learn>=1.5",
 ]
 
 [project.optional-dependencies]
@@ -87,7 +88,7 @@ disallow_untyped_defs = true
 exclude = ["src/investment_box/db/migrations/versions/"]
 
 [[tool.mypy.overrides]]
-module = ["yfinance.*", "pandas_market_calendars.*", "alpaca.*"]
+module = ["yfinance.*", "pandas_market_calendars.*", "alpaca.*", "sklearn.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

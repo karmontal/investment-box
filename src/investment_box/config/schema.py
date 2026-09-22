@@ -189,6 +189,22 @@ class ShariahConfig(_Frozen):
     rescreen_interval_days: int = Field(default=7, ge=1)
     non_compliant_exit_days: int = Field(default=3, ge=0)
     idle_cash_park_symbol: str | None = "SPSK"
+    #: Business activities that disqualify a company. Configurable because
+    #: boards differ on some categories (weapons in particular); the financial
+    #: ratios and the hard trading constraints are not configurable.
+    excluded_activities: list[str] = Field(
+        default_factory=lambda: [
+            "conventional_banking",
+            "conventional_insurance",
+            "interest_based_finance",
+            "alcohol",
+            "pork",
+            "gambling",
+            "adult_entertainment",
+            "tobacco",
+            "weapons",
+        ]
+    )
 
     @property
     def auto_tradable_statuses(self) -> frozenset[ComplianceStatus]:

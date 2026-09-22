@@ -21,7 +21,7 @@ typed confirmation in the dashboard.
 |---|---|---|
 | 1 | Skeleton, config, data layer, service layer, tests | **Complete** |
 | 2 | Telegram broadcast + control bot + approval framework | **Complete** |
-| 3 | Shariah module, universe, features, strategies, backtester | Not started |
+| 3 | Shariah module, universe, features, strategies, backtester | **Complete** |
 | 4 | Forecasts, candidate ranking, Streamlit dashboard | Not started |
 | 5 | Risk manager, paper execution, scheduler | Not started |
 | 6 | User controls, purification/zakat, audit log, Docker | Not started |
@@ -111,7 +111,11 @@ core/            types, UTC clock, NYSE calendar + T+1 arithmetic, logging
 db/              SQLAlchemy models, WAL-mode SQLite, alembic migrations
 data/            providers (yfinance / Alpaca / synthetic), parquet cache,
                  cleaning, and the repository that owns the look-ahead guard
-shariah/         constraints.py (hard, unconfigurable) + screening (Phase 3)
+shariah/         constraints.py (hard, unconfigurable) + providers, tracker
+universe/        the gates: verified -> rules -> compliant -> liquid -> enough history
+features/        indicators (no look-ahead), regime detection, feature pipeline
+strategies/      base + rotation, breakout, mean reversion, ML classifier
+backtest/        walk-forward engine, cost model, metrics, comparison report
 execution/       Broker protocol + mock broker; Alpaca adapter in Phase 5
 services/        the ONLY read/write path to state -- used by UI and Telegram alike
                  portfolio, audit (append-only), approvals (the state machine)
@@ -136,6 +140,53 @@ no margin parameter. A capability absent from the interface cannot be reached by
 a bug.
 
 ---
+
+## Backtest results
+
+Run it yourself:
+
+```bash
+uv run python scripts/run_backtest.py --start 2019-01-02
+```
+
+Walk-forward, out of sample, 2019–2026, $500 starting capital, whole shares
+only, ~18 bps round-trip costs:
+
+| Strategy | Return | CAGR | Sharpe | Max DD | Trades | Win% |
+|---|---|---|---|---|---|---|
+| etf_momentum_rotation | 15.2% | 2.1% | 0.24 | -20.7% | 340 | 47% |
+| momentum_breakout | -38.5% | -7.0% | -1.17 | -39.5% | 229 | 35% |
+| mean_reversion | 3.8% | 0.6% | 0.42 | -2.1% | 8 | 62% |
+| ml_classifier | -24.7% | -4.2% | -0.49 | -33.3% | 86 | 48% |
+| **buy & hold SPY** | **94.9%** | 10.5% | 0.84 | -20.3% | 0 | — |
+| **buy & hold SPUS** | **200.5%** | 17.9% | 0.90 | -30.1% | 0 | — |
+
+**No strategy beat buying and holding.** The best active strategy returned
+15.2% against 200.5% for simply holding SPUS over the same period. Two of the
+four lost money outright.
+
+That is the finding, and it is not a bug in the backtest. Specifically:
+
+- The rotation strategy made $212 gross across 340 trades and paid $137 in
+  costs — **64% of gross profit**. Its edge is real but tiny, and the frictions
+  eat almost all of it.
+- `mean_reversion` traded 8 times in seven years and was invested 1% of the
+  time. Its filters (RSI < 30, lower Bollinger band, *and* above the 200-day
+  average) almost never align on broad ETFs.
+- `momentum_breakout` and `ml_classifier` both lost money net of costs.
+- The ML classifier's result should be read as "the sample is too short to
+  tell", not "the model does not work". Several funds have under three years of
+  history.
+
+The report prints its caveats before its results, flags any figure derived from
+too small a sample, and refuses to call the highest return a recommendation.
+
+### Would a strategy that cheats be caught?
+
+`tests/integration/test_backtest.py` includes a `PerfectForesight` strategy
+that reads tomorrow's prices. The test asserts that the report flags its result
+as implausible. That is the last line of defence: if a subtle look-ahead leak
+ever reaches a real strategy, the too-good-to-be-true check is what surfaces it.
 
 ## Telegram
 
@@ -235,9 +286,16 @@ and loses money live. The defences:
   those stops itself. If the engine or its host is down, those positions are
   unprotected. The fallback is off until
   `execution.acknowledge_fractional_stop_risk` is set to true.
-- **Fixed frictions dominate at this size.** Spread and slippage on a $100
-  position are a far larger share of expected edge than on a $10,000 one.
-  Backtest reports will show cost as a percentage of gross P&L prominently.
+- **Trading costs are ~18 bps per round trip, at every position size.**
+  Alpaca charges no equity commission, so the frictions (half-spread plus
+  slippage) are *proportional* to notional, not fixed. A $100 position pays the
+  same percentage as a $10,000 one. This corrects an earlier claim in this file
+  that fixed costs dominate at small size — they do not. What actually binds at
+  $500 is whole-share granularity and T+1 settlement.
+- **Costs still decide viability.** Measured over 2019–2026, the rotation
+  strategy earned $212 gross and paid $137 in costs — 64% of gross profit. A
+  strategy needs a bigger edge per trade or fewer trades, not better
+  parameters.
 - **Historical Shariah compliance data does not exist for most of this
   universe.** Several of these ETFs launched in 2023 or later, so any backtest
   before roughly 2019 has almost no compliant universe to trade. Using today's
@@ -253,6 +311,21 @@ and loses money live. The defences:
   falls back to a deterministic generator so it still runs. Anything computed
   from it is meaningless, and it says so at startup, in the container banner and
   in every fetch result.
+
+### Phase 3 specifically
+
+- **The compliance screen for individual stocks is a pre-filter, not a ruling.**
+  The internal AAOIFI provider has no business-activity database and no
+  segment-level revenue data, so it returns `DOUBTFUL` (never auto-traded) even
+  when the financial ratios pass. Mode B needs a certified vendor to be useful.
+- **There is no point-in-time compliance history.** A historical universe build
+  uses today's screens, which is look-ahead. Every backtest report says so.
+- **`MNZL` has data from November 2025 only** (0.8 years) and its issuer is
+  still unconfirmed in `config/universe_etf.yaml`.
+- The backtest credits sale proceeds immediately. Real T+1 settlement is
+  enforced by the risk manager in Phase 5, so the live system will if anything
+  trade *less* than the simulation.
+- Limit orders are assumed to fill at the next open. Some would not fill at all.
 
 ### Phase 2 specifically
 

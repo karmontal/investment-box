@@ -108,11 +108,45 @@ class TradingCalendar:
     Instances are cheap; the underlying session index is cached process-wide.
     """
 
-    def __init__(self, anchor: dt.date | None = None) -> None:
-        anchor = anchor or dt.datetime.now(tz=UTC).date()
-        self._start = anchor - dt.timedelta(days=_CALENDAR_PAD_DAYS)
-        self._end = anchor + dt.timedelta(days=_CALENDAR_PAD_DAYS)
+    def __init__(
+        self,
+        anchor: dt.date | None = None,
+        *,
+        start: dt.date | None = None,
+        end: dt.date | None = None,
+    ) -> None:
+        """Build a calendar covering a date range.
+
+        Args:
+            anchor: Centre of a +/- 800 day window. Fine for live trading.
+            start: Explicit first date. Use this for backtests.
+            end: Explicit last date.
+
+        Pass ``start``/``end`` whenever the code will ask about dates far from
+        today. The anchored default silently excludes anything outside its
+        window -- a backtester iterating ``sessions`` over an uncovered period
+        finds none and skips it without an obvious error.
+        """
+        if start is not None or end is not None:
+            today = dt.datetime.now(tz=UTC).date()
+            self._start = start or (today - dt.timedelta(days=_CALENDAR_PAD_DAYS))
+            self._end = end or (today + dt.timedelta(days=_CALENDAR_PAD_DAYS))
+            if self._end < self._start:
+                raise ValueError(f"calendar end {self._end} precedes start {self._start}")
+            # Pad both ends so settlement and holding-period arithmetic can step
+            # past the requested boundaries without falling out of the window.
+            self._start -= dt.timedelta(days=30)
+            self._end += dt.timedelta(days=30)
+        else:
+            anchor = anchor or dt.datetime.now(tz=UTC).date()
+            self._start = anchor - dt.timedelta(days=_CALENDAR_PAD_DAYS)
+            self._end = anchor + dt.timedelta(days=_CALENDAR_PAD_DAYS)
         self._sessions = _schedule(self._start, self._end)
+
+    @property
+    def covers(self) -> tuple[dt.date, dt.date]:
+        """The date range this calendar can answer questions about."""
+        return self._start, self._end
 
     def _guard(self, day: dt.date) -> None:
         if not (self._start <= day <= self._end):
