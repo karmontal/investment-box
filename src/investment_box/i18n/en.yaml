@@ -61,3 +61,93 @@ warnings:
     engine stops, the position is unprotected.
   live_mode: >-
     LIVE TRADING. Real money is at risk.
+
+telegram:
+  help_title: Investment Box — commands
+  help_status: engine state, mode and autonomy level
+  help_balance: equity, cash, settled vs unsettled, P&L
+  help_positions: open positions with P&L and days held
+  help_funds: the ETF universe with compliance status
+  help_history: last N closed trades
+  help_pending: approval requests awaiting your answer
+  help_help: this message
+  help_readonly_note: >-
+    This phase is read-only. Pause, resume, kill and purification arrive in
+    Phase 6.
+  help_live_note: >-
+    Switching to live trading is not possible from Telegram. It requires a
+    typed confirmation in the dashboard.
+  no_history: No closed trades yet.
+  no_pending: Nothing is awaiting your approval.
+  unknown_command: Unknown command. Send /help for the list.
+  engine_state: Engine
+  queue: Message queue
+
+approval:
+  title: Approval needed
+  trade_proposal: Trade proposal
+  compliance_exit: Compliance exit
+  risk_override: Risk override
+  question: Question
+  approve: Approve
+  reject: Reject
+  modify: Modify size
+  snooze: Snooze
+  expires_in: Expires in
+  minutes: minutes
+  approved_by: Approved
+  rejected_by: Rejected
+  expired: Expired with no response — treated as REJECT
+  cancelled: Cancelled
+  snoozed: Snoozed
+  already_decided: This request has already been decided.
+  send_new_size: Reply with the new quantity, e.g. 2
+  invalid_size: That is not a valid quantity. Reply with a positive number.
+  timeout_note: No answer before the deadline counts as a rejection.
+  recheck_note: >-
+    Price, risk limits, settled cash and compliance are re-checked before an
+    approved trade is sent. If anything has moved materially, you will be asked
+    again.
+
+trade:
+  opened: Trade opened
+  closed: Trade closed
+  side: Side
+  size_pct: Size
+  stop_loss: Stop loss
+  take_profit: Take profit
+  strategy: Strategy
+  probability: Forecast probability
+  reason: Reason
+  exit_price: Exit price
+  exit_reason: Exit reason
+  holding_period: Holding period
+  pnl: P&L
+
+summary:
+  daily_title: Daily summary
+  weekly_title: Weekly summary
+  trades_today: Trades today
+  vs_benchmark: vs benchmark
+  win_rate: Win rate
+  drawdown: Max drawdown
+  purification: Purification total
+
+alert:
+  title: Alert
+  risk_limit: Risk limit reached — engine paused
+  compliance_change: Compliance status changed on a held position
+  broker_disconnect: Broker connection lost
+  kill_switch: KILL SWITCH ACTIVATED
+  error: Error
+
+funds:
+  title: ETF universe
+  unverified_note: >-
+    {count} symbol(s) are unverified and will not be traded. Confirm listing and
+    Shariah certification from each fund's own documents.
+  ranking: Rank
+  score: Score
+
+history:
+  title: Closed trades

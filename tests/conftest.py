@@ -48,6 +48,14 @@ def _isolate_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in list(dict(**{k: v for k, v in __import__("os").environ.items()})):
         if name.startswith("IB__"):
             monkeypatch.delenv(name, raising=False)
+
+    # Ignore any real .env on this machine. Clearing the environment is not
+    # enough: pydantic-settings reads the file directly, so a developer with
+    # live credentials configured would otherwise run a different test suite
+    # than CI does -- and their real token would reach the tests.
+    from investment_box.config import loader
+
+    monkeypatch.setattr(loader, "DEFAULT_ENV_FILE", None)
     clear_caches()
 
 
@@ -117,4 +125,65 @@ def repository(
         provider=synthetic_provider,
         cache=ParquetCache(tmp_path / "cache", ttl_hours=12),
         calendar=calendar,
+    )
+
+
+# ----------------------------------------------------------------- Phase 2
+
+
+@pytest.fixture
+def audit(database: Database, settings: Settings):
+    from investment_box.services.audit import AuditService
+
+    return AuditService(database, settings.trading_mode)
+
+
+@pytest.fixture
+def approvals(database: Database, audit, clock: FrozenClock):
+    from investment_box.services.approvals import ApprovalService
+
+    return ApprovalService(database, audit, clock=clock, timeout_minutes=30)
+
+
+@pytest.fixture
+def transport():
+    from investment_box.telegram.transport import FakeTransport
+
+    return FakeTransport()
+
+
+@pytest.fixture
+def telegram_secrets() -> Secrets:
+    """Secrets with a token, a channel and two whitelisted users."""
+    return Secrets(  # type: ignore[call-arg]
+        _env_file=None,
+        telegram_bot_token="123456789:AAFakeTokenForTestsOnlyNotReal12345",
+        telegram_channel_id="-1001234567890",
+        telegram_allowed_user_ids="555000111,555000222",
+    )
+
+
+@pytest.fixture
+def stack(
+    settings: Settings,
+    telegram_secrets: Secrets,
+    portfolio,
+    approvals,
+    audit,
+    clock: FrozenClock,
+    transport,
+):
+    """A fully wired Telegram stack on the in-memory transport."""
+    from investment_box.telegram.bot import build_telegram_stack
+
+    return build_telegram_stack(
+        settings=settings,
+        secrets=telegram_secrets,
+        portfolio=portfolio,
+        approvals=approvals,
+        audit=audit,
+        clock=clock,
+        transport=transport,
+        data_provider_name="synthetic",
+        engine_state="paused",
     )

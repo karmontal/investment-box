@@ -10,6 +10,8 @@ through the same service layer as the dashboard" an enforceable property: if
 method, they cannot disagree.
 """
 
+from investment_box.services.approvals import ApprovalRequest, ApprovalService
+from investment_box.services.audit import AuditService
 from investment_box.services.container import ServiceContainer, build_services
 from investment_box.services.portfolio import (
     AccountView,
@@ -20,6 +22,9 @@ from investment_box.services.portfolio import (
 
 __all__ = [
     "AccountView",
+    "ApprovalRequest",
+    "ApprovalService",
+    "AuditService",
     "CapitalUsage",
     "PortfolioService",
     "PositionView",

@@ -23,6 +23,8 @@ from investment_box.data.repository import MarketDataRepository
 from investment_box.db.session import Database
 from investment_box.execution.base import Broker
 from investment_box.execution.mock_broker import MockBroker
+from investment_box.services.approvals import ApprovalService
+from investment_box.services.audit import AuditService
 from investment_box.services.portfolio import PortfolioService
 
 log = get_logger(__name__)
@@ -38,6 +40,8 @@ class ServiceContainer:
     broker: Broker
     market_data: MarketDataRepository
     portfolio: PortfolioService
+    audit: AuditService
+    approvals: ApprovalService
     calendar: TradingCalendar
     clock: Clock
 
@@ -101,6 +105,8 @@ def build_services(
     market_data = MarketDataRepository.from_settings(settings)
 
     portfolio = PortfolioService(broker, database, settings, clock=clock)
+    audit = AuditService(database, settings.trading_mode)
+    approvals = ApprovalService(database, audit, clock=clock)
 
     container = ServiceContainer(
         settings=settings,
@@ -109,6 +115,8 @@ def build_services(
         broker=broker,
         market_data=market_data,
         portfolio=portfolio,
+        audit=audit,
+        approvals=approvals,
         calendar=calendar,
         clock=clock,
     )

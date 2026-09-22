@@ -24,6 +24,13 @@ DEFAULT_CONFIG_NAME = "default.yaml"
 LOCAL_CONFIG_NAME = "local.yaml"
 UNIVERSE_CONFIG_NAME = "universe_etf.yaml"
 
+#: The dotenv file consulted for settings and secrets. Tests set this to
+#: ``None`` so that a developer's real .env -- with their real broker and
+#: Telegram credentials in it -- can never influence a test run or leak into
+#: a test's view of the world. Without this, the suite behaves differently on a
+#: configured machine than in CI, which defeats the point of having it.
+DEFAULT_ENV_FILE: str | None = ".env"
+
 
 def project_root() -> Path:
     """The repository root, i.e. the directory containing ``config/``.
@@ -99,7 +106,7 @@ def load_settings(
     try:
         # Environment variables are applied by pydantic-settings on top of the
         # values passed here, so IB__* always wins over both YAML layers.
-        return Settings(**merged)
+        return Settings(_env_file=DEFAULT_ENV_FILE, **merged)  # type: ignore[call-arg]
     except Exception as exc:  # pragma: no cover - re-raised with context
         raise ConfigError(f"Invalid configuration: {exc}") from exc
 
@@ -116,7 +123,7 @@ def get_settings() -> Settings:
 @lru_cache(maxsize=1)
 def get_secrets() -> Secrets:
     """Process-wide cached secrets."""
-    return Secrets()
+    return Secrets(_env_file=DEFAULT_ENV_FILE)  # type: ignore[call-arg]
 
 
 def load_universe_file(path: Path | None = None) -> dict[str, Any]:

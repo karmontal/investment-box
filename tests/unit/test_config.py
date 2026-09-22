@@ -161,3 +161,33 @@ class TestStartupWarnings:
             overrides={"universe": {"mode": "B"}, "shariah": {"provider": "mock_external"}}
         )
         assert any("Mock screens" in w for w in settings.startup_warnings())
+
+
+class TestTelegramChannelValidation:
+    """Catch a malformed channel id at startup, not after four failed retries."""
+
+    def _secrets(self, channel_id: str) -> Secrets:
+        return Secrets(_env_file=None, telegram_channel_id=channel_id)  # type: ignore[call-arg]
+
+    def test_valid_channel_id(self) -> None:
+        assert self._secrets("-1001234567890").telegram_channel_problem is None
+
+    def test_public_username_is_valid(self) -> None:
+        assert self._secrets("@my_channel").telegram_channel_problem is None
+
+    def test_unset_is_not_a_problem(self) -> None:
+        assert self._secrets("").telegram_channel_problem is None
+
+    def test_missing_leading_minus_is_caught(self) -> None:
+        """The real failure: the sign gets dropped when copied from a t.me URL."""
+        problem = self._secrets("1001234567890").telegram_channel_problem
+        assert problem is not None
+        assert "-100" in problem
+
+    def test_positive_id_is_caught(self) -> None:
+        problem = self._secrets("123456789").telegram_channel_problem
+        assert problem is not None
+        assert "negative" in problem
+
+    def test_garbage_is_caught(self) -> None:
+        assert self._secrets("not-an-id").telegram_channel_problem is not None

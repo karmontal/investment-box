@@ -59,3 +59,90 @@ warnings:
     وقف الخسارة لهذا المركز يديره المحرك وليس الوسيط. إذا توقف المحرك فالمركز غير محمي.
   live_mode: >-
     تداول حقيقي. أموال حقيقية معرّضة للمخاطر.
+
+telegram:
+  help_title: صندوق الاستثمار — الأوامر
+  help_status: حالة المحرك والوضع ومستوى الاستقلالية
+  help_balance: إجمالي الحساب والنقد المسوّى وغير المسوّى والأرباح
+  help_positions: المراكز المفتوحة مع الربح/الخسارة وأيام الاحتفاظ
+  help_funds: قائمة الصناديق مع حالة المطابقة الشرعية
+  help_history: آخر الصفقات المغلقة
+  help_pending: طلبات الموافقة المعلّقة
+  help_help: هذه الرسالة
+  help_readonly_note: >-
+    هذه المرحلة للقراءة فقط. الإيقاف والاستئناف ومفتاح الإيقاف والتطهير في المرحلة السادسة.
+  help_live_note: >-
+    لا يمكن التحويل إلى التداول الحقيقي من تيليجرام. يتطلب ذلك تأكيداً مكتوباً في لوحة التحكم.
+  no_history: لا توجد صفقات مغلقة بعد.
+  no_pending: لا يوجد ما ينتظر موافقتك.
+  unknown_command: أمر غير معروف. أرسل ‎/help‎ لعرض القائمة.
+  engine_state: المحرك
+  queue: طابور الرسائل
+
+approval:
+  title: مطلوب موافقة
+  trade_proposal: صفقة مقترحة
+  compliance_exit: خروج لعدم المطابقة
+  risk_override: تجاوز حد المخاطرة
+  question: سؤال
+  approve: موافقة
+  reject: رفض
+  modify: تعديل الحجم
+  snooze: تأجيل
+  expires_in: تنتهي خلال
+  minutes: دقيقة
+  approved_by: تمت الموافقة
+  rejected_by: تم الرفض
+  expired: انتهت المهلة دون رد — تُعامل كرفض
+  cancelled: أُلغيت
+  snoozed: مؤجلة
+  already_decided: تم البت في هذا الطلب مسبقاً.
+  send_new_size: أرسل الكمية الجديدة، مثال 2
+  invalid_size: كمية غير صالحة. أرسل رقماً موجباً.
+  timeout_note: عدم الرد قبل انتهاء المهلة يُعد رفضاً.
+  recheck_note: >-
+    يُعاد فحص السعر وحدود المخاطرة والنقد المسوّى والمطابقة الشرعية قبل تنفيذ أي صفقة
+    موافق عليها. إذا تغيّر شيء جوهري سيتم سؤالك مرة أخرى.
+
+trade:
+  opened: فتح صفقة
+  closed: إغلاق صفقة
+  side: الاتجاه
+  size_pct: الحجم
+  stop_loss: وقف الخسارة
+  take_profit: جني الأرباح
+  strategy: الاستراتيجية
+  probability: احتمال التوقع
+  reason: السبب
+  exit_price: سعر الخروج
+  exit_reason: سبب الخروج
+  holding_period: مدة الاحتفاظ
+  pnl: الربح/الخسارة
+
+summary:
+  daily_title: الملخص اليومي
+  weekly_title: الملخص الأسبوعي
+  trades_today: صفقات اليوم
+  vs_benchmark: مقارنة بالمؤشر
+  win_rate: نسبة الربح
+  drawdown: أقصى انخفاض
+  purification: إجمالي التطهير
+
+alert:
+  title: تنبيه
+  risk_limit: تم بلوغ حد المخاطرة — تم إيقاف المحرك
+  compliance_change: تغيّرت حالة المطابقة الشرعية لمركز مفتوح
+  broker_disconnect: انقطع الاتصال بالوسيط
+  kill_switch: تم تفعيل مفتاح الإيقاف
+  error: خطأ
+
+funds:
+  title: قائمة الصناديق
+  unverified_note: >-
+    {count} رمز غير موثّق ولن يتم تداوله. تأكد من الإدراج والشهادة الشرعية من
+    وثائق كل صندوق.
+  ranking: الترتيب
+  score: النتيجة
+
+history:
+  title: الصفقات المغلقة

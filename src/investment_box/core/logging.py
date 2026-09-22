@@ -84,6 +84,39 @@ def redact_secrets(
     }
 
 
+class SecretRedactingFilter(logging.Filter):
+    """Scrub secrets from *stdlib* log records.
+
+    structlog's processor chain only sees structlog events. Third-party
+    libraries log through the stdlib, and some of them log things that contain
+    credentials -- httpx logs the full request URL, and the Telegram Bot API
+    puts the bot token directly in the URL path:
+
+        POST https://api.telegram.org/bot<TOKEN>/sendMessage
+
+    Without this filter that token reaches the console and any log file, which
+    is precisely the leak the redaction exists to prevent. Attached to every
+    handler, so it applies to every record regardless of which logger emitted
+    it.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = _scrub_text(record.msg)
+        if record.args:
+            if isinstance(record.args, dict):
+                record.args = {key: _scrub_value(value) for key, value in record.args.items()}
+            else:
+                record.args = tuple(_scrub_value(arg) for arg in record.args)
+        return True
+
+
+#: Third-party loggers that are chatty and, worse, log request URLs. Pinned to
+#: WARNING so a token-bearing URL is not even constructed at INFO. The filter
+#: above is the real defence; this is a second line of it.
+_NOISY_LOGGERS = ("httpx", "httpcore", "telegram", "telegram.ext", "urllib3", "asyncio")
+
+
 def configure_logging(
     level: str = "INFO",
     *,
@@ -107,7 +140,14 @@ def configure_logging(
         log_file.parent.mkdir(parents=True, exist_ok=True)
         handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
 
+    redactor = SecretRedactingFilter()
+    for handler in handlers:
+        handler.addFilter(redactor)
+
     logging.basicConfig(format="%(message)s", level=numeric_level, handlers=handlers, force=True)
+
+    for name in _NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(max(numeric_level, logging.WARNING))
 
     renderer: structlog.types.Processor = (
         structlog.processors.JSONRenderer()

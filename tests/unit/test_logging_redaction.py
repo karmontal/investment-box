@@ -85,3 +85,96 @@ class TestExceptionText:
         )
         out = scrub({"exc_info": message})
         assert "PKABCDEFGHIJ1234567" not in out["exc_info"]
+
+
+class TestStdlibRedaction:
+    """Regression tests for a real leak.
+
+    Every credential below is fabricated. Never paste a live token into a test,
+    even a revoked one: tests are committed, and a committed secret outlives
+    the incident that produced it.
+
+    The Telegram Bot API puts the token in the URL path, and httpx logs the
+    full URL through the stdlib logger -- bypassing structlog's processors
+    entirely. This reached a live terminal before it was caught.
+    """
+
+    @staticmethod
+    def _capture(logger_name: str, msg: str, *args: object) -> str:
+        import io
+        import logging
+
+        from investment_box.core.logging import SecretRedactingFilter
+
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.addFilter(SecretRedactingFilter())
+        handler.setFormatter(logging.Formatter("%(message)s"))
+
+        logger = logging.getLogger(logger_name)
+        logger.handlers = [handler]
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        logger.warning(msg, *args)
+        return stream.getvalue()
+
+    def test_telegram_token_in_a_url_argument(self) -> None:
+        """The exact shape httpx emits: token in the URL, URL passed as an arg."""
+        output = self._capture(
+            "httpx",
+            'HTTP Request: %s %s "%s"',
+            "POST",
+            "https://api.telegram.org/bot1234567890:AAFfakeTokenForTestsOnly_NotReal12345/sendMessage",
+            "HTTP/1.1 400 Bad Request",
+        )
+        assert "AAFfakeTokenForTestsOnly_NotReal12345" not in output
+        assert REDACTED in output
+        # The useful part of the message must survive.
+        assert "api.telegram.org" in output
+        assert "400 Bad Request" in output
+
+    def test_token_embedded_in_the_message_itself(self) -> None:
+        output = self._capture(
+            "some.library",
+            "calling https://api.telegram.org/bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw/getMe",
+        )
+        assert "AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw" not in output
+
+    def test_alpaca_key_in_an_argument(self) -> None:
+        output = self._capture("alpaca", "auth header: %s", "PKTEST1234567890ABCDEF")
+        assert "PKTEST1234567890ABCDEF" not in output
+
+    def test_dict_style_args(self) -> None:
+        output = self._capture(
+            "some.library", "request %(url)s", {"url": "https://x/?api_key=supersecretvalue"}
+        )
+        assert "supersecretvalue" not in output
+
+    def test_innocent_messages_pass_through_intact(self) -> None:
+        output = self._capture("investment_box", "placed order for %s", "SPUS")
+        assert "SPUS" in output
+        assert REDACTED not in output
+
+    def test_noisy_http_loggers_are_pinned_to_warning(self) -> None:
+        """Second line of defence: don't even emit the URL at INFO."""
+        import logging
+
+        from investment_box.core.logging import configure_logging
+
+        configure_logging("INFO")
+        assert logging.getLogger("httpx").level >= logging.WARNING
+        assert logging.getLogger("httpcore").level >= logging.WARNING
+
+    def test_debug_level_still_redacts(self) -> None:
+        """Turning logging up for troubleshooting must not turn redaction off."""
+        import logging
+
+        from investment_box.core.logging import configure_logging
+
+        configure_logging("DEBUG")
+        root_handlers = logging.getLogger().handlers
+        assert root_handlers
+        assert any(
+            any(f.__class__.__name__ == "SecretRedactingFilter" for f in h.filters)
+            for h in root_handlers
+        )

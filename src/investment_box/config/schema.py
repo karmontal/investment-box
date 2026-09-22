@@ -324,6 +324,38 @@ class Secrets(BaseSettings):
     def is_live_alpaca_url(self) -> bool:
         return "paper" not in self.alpaca_base_url.lower()
 
+    @property
+    def telegram_channel_problem(self) -> str | None:
+        """Describe a malformed channel ID, or ``None`` if it looks usable.
+
+        Telegram channel and supergroup IDs are negative and begin with
+        ``-100``. Copying one out of a ``t.me/c/...`` URL, or out of a bot
+        helper that prints it unsigned, drops the sign -- and the only symptom
+        is a generic "Chat not found" after the message has already been
+        retried four times. Catching it at startup is far cheaper.
+        """
+        raw = (self.telegram_channel_id or "").strip()
+        if not raw:
+            return None
+        if raw.startswith("@"):
+            return None  # a public @username is valid
+        if raw.startswith("-100") and raw[4:].isdigit():
+            return None
+        if raw.lstrip("-").isdigit():
+            if raw.startswith("100"):
+                return (
+                    "TELEGRAM_CHANNEL_ID looks like a channel id with the leading "
+                    "minus missing. It should start with '-100'. Telegram will "
+                    "report 'Chat not found' until this is corrected."
+                )
+            if not raw.startswith("-"):
+                return (
+                    "TELEGRAM_CHANNEL_ID is positive. Channel and supergroup ids are "
+                    "negative and start with '-100'; a positive id is a user id."
+                )
+            return None
+        return "TELEGRAM_CHANNEL_ID is neither a numeric id nor an @username."
+
 
 class Settings(BaseSettings):
     """The complete non-secret configuration."""

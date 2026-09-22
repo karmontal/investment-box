@@ -18,6 +18,7 @@ dependencies = [
     "structlog>=24.4",
     "python-dotenv>=1.0",
     "tenacity>=9.0",
+    "python-telegram-bot>=21.9",
 ]
 
 [project.optional-dependencies]
@@ -34,6 +35,7 @@ dev = [
     "mypy>=1.13",
     "types-pyyaml>=6.0",
     "pandas-stubs>=2.2",
+    "pytest-asyncio>=0.25",
 ]
 
 [build-system]
@@ -47,6 +49,9 @@ packages = ["src/investment_box"]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
+# Alembic rewrites these on every autogenerate; linting generated output only
+# produces churn. env.py and the template ARE hand-written and stay checked.
+extend-exclude = ["src/investment_box/db/migrations/versions"]
 
 [tool.ruff.lint]
 select = [
@@ -54,6 +59,7 @@ select = [
     "F",         # pyflakes
     "I",         # isort
     "B",         # bugbear
+    "BLE",       # blind-except -- each one must carry a written justification
     "UP",        # pyupgrade
     "N",         # pep8-naming
     "ANN",       # annotations
@@ -78,6 +84,8 @@ strict = true
 warn_unreachable = true
 disallow_untyped_defs = true
 
+exclude = ["src/investment_box/db/migrations/versions/"]
+
 [[tool.mypy.overrides]]
 module = ["yfinance.*", "pandas_market_calendars.*", "alpaca.*"]
 ignore_missing_imports = true
@@ -85,6 +93,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
+asyncio_mode = "auto"
 markers = [
     "network: test requires live network access (deselected by default)",
 ]

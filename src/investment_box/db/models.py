@@ -22,18 +22,59 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Dialect,
     ForeignKey,
     Index,
     Integer,
     Numeric,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+
+class UTCDateTime(TypeDecorator[dt.datetime]):
+    """A timestamp that is always timezone-aware UTC on the way in and out.
+
+    SQLite has no timezone support: it stores whatever it is given and returns
+    a naive datetime. That naive value then blows up -- or worse, silently
+    compares wrong -- against the timezone-aware datetimes used everywhere else
+    in this codebase.
+
+    Fixing that at each call site leaves the same trap for the next column, so
+    it is fixed here instead: writes must be aware (a naive write is a bug and
+    raises), and reads are always returned as aware UTC.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(
+        self, value: dt.datetime | None, dialect: Dialect
+    ) -> dt.datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError(
+                f"Refusing to store a naive datetime: {value!r}. Every timestamp in "
+                f"this application is timezone-aware UTC."
+            )
+        return value.astimezone(dt.UTC)
+
+    def process_result_value(
+        self, value: dt.datetime | None, dialect: Dialect
+    ) -> dt.datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=dt.UTC) if value.tzinfo is None else value.astimezone(dt.UTC)
+
+
 MONEY = Numeric(18, 6)
 QTY = Numeric(18, 8)
+#: Use this, never bare DateTime, for any column holding a moment in time.
+TIMESTAMP = UTCDateTime()
 
 
 class Base(DeclarativeBase):
@@ -46,7 +87,7 @@ def _utcnow() -> dt.datetime:
 
 class TimestampMixin:
     created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False
+        TIMESTAMP, default=_utcnow, nullable=False
     )
 
 
@@ -104,8 +145,8 @@ class Order(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending")
     filled_quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False, default=Decimal("0"))
     filled_avg_price: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
-    submitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    filled_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    submitted_at: Mapped[dt.datetime | None] = mapped_column(TIMESTAMP, nullable=True)
+    filled_at: Mapped[dt.datetime | None] = mapped_column(TIMESTAMP, nullable=True)
     signal_id: Mapped[int | None] = mapped_column(ForeignKey("signals.id"), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     trading_mode: Mapped[str] = mapped_column(String(8), nullable=False, default="paper")
@@ -130,11 +171,11 @@ class Trade(Base, TimestampMixin):
 
     quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
     entry_price: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
-    entry_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    entry_at: Mapped[dt.datetime] = mapped_column(TIMESTAMP, nullable=False)
     entry_date: Mapped[dt.date] = mapped_column(Date, nullable=False, index=True)
 
     exit_price: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
-    exit_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exit_at: Mapped[dt.datetime | None] = mapped_column(TIMESTAMP, nullable=True)
     exit_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     exit_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
@@ -150,7 +191,7 @@ class Trade(Base, TimestampMixin):
     compliance_status_at_entry: Mapped[str] = mapped_column(String(16), nullable=False)
     compliance_source_at_entry: Mapped[str] = mapped_column(String(64), nullable=False)
     compliance_screened_at: Mapped[dt.datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        TIMESTAMP, nullable=True
     )
 
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -171,7 +212,7 @@ class ComplianceScreen(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     source: Mapped[str] = mapped_column(String(64), nullable=False)
     screened_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+        TIMESTAMP, nullable=False, default=_utcnow, index=True
     )
     #: Which denominator the ratios used. Recorded because AAOIFI and other
     #: boards differ, and a ratio is meaningless without it.
@@ -200,8 +241,8 @@ class Approval(Base, TimestampMixin):
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
-    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    responded_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[dt.datetime] = mapped_column(TIMESTAMP, nullable=False)
+    responded_at: Mapped[dt.datetime | None] = mapped_column(TIMESTAMP, nullable=True)
     responder_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     response_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -228,7 +269,7 @@ class EquitySnapshot(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     snapshot_date: Mapped[dt.date] = mapped_column(Date, nullable=False, unique=True)
     taken_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow
+        TIMESTAMP, nullable=False, default=_utcnow
     )
     equity: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     cash_settled: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
@@ -251,7 +292,7 @@ class Dividend(Base, TimestampMixin):
     non_permissible_ratio: Mapped[float | None] = mapped_column(nullable=True)
     purification_due: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
     ratio_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    purified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purified_at: Mapped[dt.datetime | None] = mapped_column(TIMESTAMP, nullable=True)
 
     __table_args__ = (UniqueConstraint("symbol", "pay_date", name="uq_dividend_symbol_date"),)
 
@@ -279,6 +320,6 @@ class SettingOverride(Base, TimestampMixin):
     key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     value_json: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+        TIMESTAMP, nullable=False, default=_utcnow, onupdate=_utcnow
     )
     updated_by: Mapped[str] = mapped_column(String(32), nullable=False, default="ui")

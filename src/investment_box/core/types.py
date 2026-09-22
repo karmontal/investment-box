@@ -109,6 +109,59 @@ class AutonomyLevel(StrEnum):
     FULLY_AUTONOMOUS = "3"
 
 
+class ApprovalKind(StrEnum):
+    """What a human is being asked to decide."""
+
+    TRADE_PROPOSAL = "trade_proposal"
+    COMPLIANCE_EXIT = "compliance_exit"
+    RISK_OVERRIDE = "risk_override"
+    QUESTION = "question"
+
+
+class ApprovalStatus(StrEnum):
+    """Lifecycle of an approval request.
+
+    ``EXPIRED`` is kept distinct from ``REJECTED`` so the audit log records
+    *why* a proposal did not trade -- but only ``APPROVED`` ever authorises an
+    action. A timeout is never an approval.
+    """
+
+    PENDING = "pending"
+    #: The user pressed Modify; the engine is waiting for a replacement size.
+    AWAITING_MODIFICATION = "awaiting_modification"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+    @property
+    def is_terminal(self) -> bool:
+        return self in {
+            ApprovalStatus.APPROVED,
+            ApprovalStatus.REJECTED,
+            ApprovalStatus.EXPIRED,
+            ApprovalStatus.CANCELLED,
+        }
+
+    @property
+    def authorises_action(self) -> bool:
+        """The only status that permits anything to happen.
+
+        Written as an explicit allow-list rather than ``!= REJECTED`` so that a
+        status added later defaults to *not* authorising.
+        """
+        return self is ApprovalStatus.APPROVED
+
+
+class ApprovalAction(StrEnum):
+    """What the user pressed."""
+
+    APPROVE = "approve"
+    REJECT = "reject"
+    MODIFY = "modify"
+    SNOOZE = "snooze"
+
+
 class ExitReason(StrEnum):
     TAKE_PROFIT = "take_profit"
     STOP_LOSS = "stop_loss"

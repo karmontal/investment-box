@@ -20,7 +20,7 @@ typed confirmation in the dashboard.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Skeleton, config, data layer, service layer, tests | **Complete** |
-| 2 | Telegram broadcast + control bot + approval framework | Not started |
+| 2 | Telegram broadcast + control bot + approval framework | **Complete** |
 | 3 | Shariah module, universe, features, strategies, backtester | Not started |
 | 4 | Forecasts, candidate ranking, Streamlit dashboard | Not started |
 | 5 | Risk manager, paper execution, scheduler | Not started |
@@ -47,6 +47,12 @@ Run the tests:
 
 ```bash
 uv run pytest
+```
+
+Exercise the Telegram stack without sending anything:
+
+```bash
+uv run python scripts/telegram_smoke.py
 ```
 
 Lint and type-check:
@@ -108,6 +114,8 @@ data/            providers (yfinance / Alpaca / synthetic), parquet cache,
 shariah/         constraints.py (hard, unconfigurable) + screening (Phase 3)
 execution/       Broker protocol + mock broker; Alpaca adapter in Phase 5
 services/        the ONLY read/write path to state -- used by UI and Telegram alike
+                 portfolio, audit (append-only), approvals (the state machine)
+telegram/        transport -> queue -> auth -> formatting -> broadcast/approvals/commands
 i18n/            EN/AR catalogues with English fallback
 ```
 
@@ -128,6 +136,68 @@ no margin parameter. A capability absent from the interface cannot be reached by
 a bug.
 
 ---
+
+## Telegram
+
+Two channels, as specified: a one-way broadcast channel for trade events,
+summaries and alerts, and a private interactive bot that talks only to
+whitelisted user IDs.
+
+Read-only commands: `/status`, `/balance`, `/positions`, `/funds`,
+`/history [n]`, `/pending`, `/help`. Every message is tagged `[PAPER]` or
+`[LIVE]` and rendered in English and Arabic.
+
+### Security
+
+- **The whitelist fails closed.** An empty or missing
+  `TELEGRAM_ALLOWED_USER_IDS` authorises nobody, never everybody.
+- **Callbacks are authorised too, not just commands.** A forwarded message
+  carries its inline keyboard with it, so checking only `/commands` would leave
+  the approve button reachable by anyone who received a forward.
+- **Unauthorised senders get no reply at all** — not even a refusal. A reply of
+  any kind confirms the bot exists and is listening. Attempts are logged and
+  audited, once per user id, so one persistent stranger cannot flood the log.
+- **Live trading cannot be enabled from Telegram**, by any user. It requires a
+  typed confirmation in the dashboard. Being whitelisted is not a bypass:
+  authorisation and capability are separate checks.
+- Bot token, channel ID and allowed IDs come only from the environment.
+
+### Approvals
+
+The state machine lives in `services/approvals.py`, deliberately separate from
+Telegram, so the dashboard can answer the same request later.
+
+- **A timeout is never an approval.** Enforced twice: a sweeper expires due
+  requests, *and* every read path treats a past-deadline request as expired
+  regardless of what the table says. Failing closed does not depend on a
+  background job being alive.
+- **A late tap does not count.** Approving after the deadline records
+  `EXPIRED`, not `APPROVED` — otherwise a trade could be authorised on
+  information that is half an hour stale.
+- **Responses are idempotent.** Only a `PENDING` request can be answered, so a
+  double tap, a retried callback or a duplicate webhook cannot approve twice or
+  overturn a decision.
+- Buttons are stripped and the message rewritten once a request is decided, so
+  a spent approval never still looks pressable.
+- `Modify` parks the request and consumes the next numeric reply as the new
+  size; the original deadline still applies. `Snooze` extends it twice at most.
+- Every transition is written to the append-only audit log with who and when.
+
+### The queue
+
+`enqueue()` is synchronous, non-blocking and never raises, so a caller in the
+middle of placing an order hands over a message and moves on. Delivery happens
+on a background worker with exponential backoff; after the final attempt the
+message is dropped with a log entry. A dropped notification is bad, a trade
+that failed because a notification failed is worse.
+
+Rate limits: ~25 messages/second globally and 18/minute per chat, under
+Telegram's documented 30/s and ~20/min. The queue is bounded and sheds its
+lowest-priority messages when full, so a long outage cannot exhaust memory —
+and alerts outrank summaries, so the messages most worth keeping survive.
+
+With no bot token the entire stack runs on an in-memory transport. Missing
+credentials degrade to silence, never to a crash.
 
 ## Avoiding look-ahead bias
 
@@ -184,6 +254,22 @@ and loses money live. The defences:
   from it is meaningless, and it says so at startup, in the container banner and
   in every fetch result.
 
+### Phase 2 specifically
+
+- **Nothing calls the approval framework yet.** It is tested against dummy
+  proposals; the engine plugs into it in Phase 5.
+- **`/funds` shows no ranking or score.** Displaying a placeholder there would
+  invite it being read as a signal. Phase 4 supplies the real one, and
+  compliance status stays absent rather than optimistically "compliant" until
+  Phase 3 populates the screening tables.
+- **There is no long-polling loop.** `TelegramBot` handles updates it is given;
+  nothing yet pumps them from Telegram. That arrives with the scheduler in
+  Phase 5, because until then there would be no engine for a command to affect.
+- **Modify-flow state is in memory.** A restart mid-modification loses which
+  request a user was resizing; the request itself is safe in the database and
+  still expires into a rejection.
+- `/pause`, `/resume`, `/kill` and `/purification` are Phase 6.
+
 ### Phase 1 specifically
 
 - The Alpaca broker adapter is **not wired**. Even with valid credentials,
@@ -206,3 +292,20 @@ uv run pytest -m "not network"  # skip anything needing the network (the default
 uv run ruff check . --fix     # lint
 uv run mypy src               # type-check
 ```
+
+### Database migrations
+
+The schema is managed by alembic. The URL comes from the application config,
+not from `alembic.ini`, so a migration can never run against a different
+database than the app uses.
+
+```bash
+uv run alembic upgrade head                        # apply
+uv run alembic check                               # models vs schema drift
+uv run alembic revision --autogenerate -m "..."    # new migration
+```
+
+Migrations render the custom `UTCDateTime` as a plain `DateTime(timezone=True)`
+and import nothing from application code, so an old migration still runs after
+the model layer is refactored. `render_as_batch` is on because SQLite cannot
+`ALTER` most things in place.
