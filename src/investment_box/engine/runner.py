@@ -234,6 +234,15 @@ def build_engine(
     if account is not None and account.trading_blocked:
         blockers.append("the broker reports trading is blocked on this account")
 
+    from investment_box.services.settings_service import SettingsService
+
+    settings_service = SettingsService(services.database, settings, services.audit)
+    if settings_service.kill_requested:
+        blockers.append(
+            f"a kill switch is active: {settings_service.kill_reason}. Clear it in the "
+            f"dashboard before the engine will trade again."
+        )
+
     if settings.engine.autonomy_level is AutonomyLevel.SUGGEST_ONLY and telegram is None:
         blockers.append(
             "autonomy level 1 requires an approval channel, but Telegram is not configured"

@@ -23,6 +23,7 @@ from investment_box.config.loader import load_universe_file
 from investment_box.forecast.calibration import CalibrationTracker
 from investment_box.services.container import ServiceContainer, build_services
 from investment_box.services.research import ResearchService, ResearchSnapshot
+from investment_box.services.settings_service import SettingsService
 from investment_box.shariah.providers.mock_external import MockExternalProvider
 from investment_box.shariah.status import ComplianceTracker
 from investment_box.strategies import STRATEGY_REGISTRY
@@ -68,6 +69,15 @@ def get_compliance_tracker() -> ComplianceTracker:
         services.audit,
         clock=services.clock,
     )
+
+
+@st.cache_resource(show_spinner=False)
+def get_settings_service() -> SettingsService:
+    """User-editable settings. A resource, not data: it writes."""
+    from investment_box.services.settings_service import SettingsService
+
+    services = get_services()
+    return SettingsService(services.database, services.settings, services.audit)
 
 
 @st.cache_data(show_spinner=False)

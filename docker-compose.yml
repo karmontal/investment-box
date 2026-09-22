@@ -1,0 +1,75 @@
+# Two services sharing one data volume: the engine and the dashboard.
+#
+# They are separate containers on purpose. The dashboard restarting must not
+# interrupt the engine, and an engine crash must not take away the view you
+# need to see why.
+#
+# Secrets come from .env, which is gitignored and never baked into the image.
+
+services:
+  engine:
+    build: .
+    image: investment-box:latest
+    container_name: investment-box-engine
+    command: ["python", "scripts/run_engine.py"]
+    env_file: [.env]
+    environment:
+      IB__DATA_DIR: /data
+      IB__LOG_LEVEL: INFO
+      TZ: Asia/Jerusalem
+    volumes:
+      - investment-data:/data
+      # Mounted read-only: the engine reads config and must never rewrite it.
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import investment_box; print('ok')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+
+  dashboard:
+    build: .
+    image: investment-box:latest
+    container_name: investment-box-dashboard
+    command:
+      - streamlit
+      - run
+      - src/investment_box/ui/app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+    env_file: [.env]
+    environment:
+      IB__DATA_DIR: /data
+      TZ: Asia/Jerusalem
+    ports:
+      # Bound to localhost only. This dashboard has a kill switch and shows
+      # account balances; it must not be reachable from the internet. Put it
+      # behind a VPN or an authenticating reverse proxy if you need remote
+      # access.
+      - "127.0.0.1:8501:8501"
+    volumes:
+      - investment-data:/data
+      - ./config:/app/config:ro
+    depends_on: [engine]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+
+volumes:
+  investment-data:
+    driver: local

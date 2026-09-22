@@ -28,6 +28,8 @@ from investment_box.telegram.approvals import ApprovalNotifier
 from investment_box.telegram.auth import AuthGuard
 from investment_box.telegram.broadcast import BroadcastChannel
 from investment_box.telegram.commands import CommandContext, CommandHandlers
+from investment_box.telegram.controls import CALLBACK_PREFIX as CONTROL_PREFIX
+from investment_box.telegram.controls import ControlCommands
 from investment_box.telegram.queue import MessageQueue
 from investment_box.telegram.transport import FakeTransport, PTBTransport, TelegramTransport
 
@@ -35,6 +37,9 @@ log = get_logger(__name__)
 
 #: How often expired approvals are swept.
 SWEEP_INTERVAL_SECONDS = 60
+
+#: Commands that change state and therefore need a confirmation.
+CONTROL_COMMANDS: frozenset[str] = frozenset({"pause", "resume", "kill", "purification"})
 
 
 @dataclass
@@ -47,6 +52,7 @@ class TelegramStack:
     broadcast: BroadcastChannel
     notifier: ApprovalNotifier
     handlers: CommandHandlers
+    controls: ControlCommands
     bot: TelegramBot
 
     @property
@@ -65,6 +71,7 @@ class TelegramBot:
         notifier: ApprovalNotifier,
         queue: MessageQueue,
         translator: Translator,
+        controls: ControlCommands | None = None,
         clock: Clock | None = None,
     ) -> None:
         self.guard = guard
@@ -72,6 +79,7 @@ class TelegramBot:
         self.notifier = notifier
         self.queue = queue
         self.translator = translator
+        self.controls = controls
         self.clock = clock or SystemClock()
         self._sweeper: asyncio.Task[None] | None = None
 
@@ -112,6 +120,21 @@ class TelegramBot:
             return None  # not a command; stay quiet rather than chattering
 
         command, _, argument = preview.partition(" ")
+        name = command.lstrip("/").split("@")[0].lower()
+
+        if self.controls is not None and name in CONTROL_COMMANDS:
+            try:
+                outcome = self.controls.handle(command, user_id, argument or None)
+            except PermissionError as exc:
+                # Live switching, and anything else Telegram may never do.
+                reply = f"{self.translator.t('telegram.help_live_note')}\n\n{exc}"
+                self.queue.enqueue(str(chat_id), reply, priority=80)
+                return reply
+            self.queue.enqueue(
+                str(chat_id), outcome.message, buttons=outcome.buttons, priority=80
+            )
+            return outcome.message
+
         reply = self.handlers.dispatch(command, argument or None)
         self.queue.enqueue(str(chat_id), reply, priority=60)
         return reply
@@ -133,6 +156,16 @@ class TelegramBot:
         if not self.guard.check(user_id, context=f"callback:{data[:24]}", username=username):
             return None
         assert user_id is not None
+
+        if self.controls is not None and data.startswith(f"{CONTROL_PREFIX}:"):
+            outcome = self.controls.handle_callback(data, user_id)
+            if outcome is None:
+                return None
+            if callback_id:
+                await self.notifier.transport.answer_callback(callback_id)
+            self.queue.enqueue(str(user_id), outcome.message, priority=90)
+            return outcome
+
         return await self.notifier.handle_callback(
             data=data, user_id=user_id, callback_id=callback_id
         )
@@ -259,12 +292,21 @@ def build_telegram_stack(
         )
     )
 
+    controls = ControlCommands(
+        guard=guard,
+        audit=audit,
+        trading_mode=settings.trading_mode,
+        translator=translator,
+        clock=clock,
+    )
+
     bot = TelegramBot(
         guard=guard,
         handlers=handlers,
         notifier=notifier,
         queue=queue,
         translator=translator,
+        controls=controls,
         clock=clock,
     )
 
@@ -275,5 +317,6 @@ def build_telegram_stack(
         broadcast=broadcast,
         notifier=notifier,
         handlers=handlers,
+        controls=controls,
         bot=bot,
     )

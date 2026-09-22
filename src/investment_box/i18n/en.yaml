@@ -70,10 +70,15 @@ telegram:
   help_funds: the ETF universe with compliance status
   help_history: last N closed trades
   help_pending: approval requests awaiting your answer
+  help_purification: "purification owed for the current period"
+  help_pause: "pause the engine (exits still allowed)"
+  help_resume: "resume the engine"
+  help_kill: 'kill switch - add "all" to close positions too'
+  help_confirm_note: "Pause, resume and kill each require a second confirming tap."
   help_help: this message
   help_readonly_note: >-
-    This phase is read-only. Pause, resume, kill and purification arrive in
-    Phase 6.
+    Read-only commands are always available. Pause, resume and kill change
+    state and each needs a confirming tap.
   help_live_note: >-
     Switching to live trading is not possible from Telegram. It requires a
     typed confirmation in the dashboard.

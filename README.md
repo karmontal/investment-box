@@ -24,7 +24,7 @@ typed confirmation in the dashboard.
 | 3 | Shariah module, universe, features, strategies, backtester | **Complete** |
 | 4 | Forecasts, candidate ranking, Streamlit dashboard | **Complete** |
 | 5 | Risk manager, paper execution, scheduler | **Complete** |
-| 6 | User controls, purification/zakat, audit log, Docker | Not started |
+| 6 | User controls, purification/zakat, audit log, Docker | **Complete** |
 | 7 | Live mode behind a pre-flight checklist | Not started |
 
 ---
@@ -130,6 +130,7 @@ strategies/      base + rotation, breakout, mean reversion, ML classifier
 backtest/        walk-forward engine, cost model, metrics, comparison report
 forecast/        probabilities with confidence and calibration; candidate ranking
 risk/            sizing, every limit, and the settled-cash ledger
+services/        + settings_service.py — your persisted decisions, audited
 engine/          the cycle, the scheduler, the state machine, the kill switch
 ui/              read-only Streamlit dashboard
 execution/       Broker protocol + mock broker; Alpaca adapter in Phase 5
@@ -423,6 +424,85 @@ immediately before submission, not on the proposal.
 Exits are market orders deliberately: a limit exit that does not fill leaves a
 position the engine believes is closed.
 
+## Controls
+
+Eight dashboard tabs; `Controls` is the only one that writes. Telegram gains
+`/pause`, `/resume`, `/kill` and `/purification`.
+
+### What cannot be changed, from anywhere
+
+`settings_service` refuses these keys outright rather than ignoring them:
+margin, shorting, derivatives, leveraged/inverse funds, crypto, and the
+unsettled-cash block. They are frozen constants asserted on every order.
+
+The dashboard renders them as **statements, not disabled toggles**. A greyed-out
+switch implies it could be un-greyed.
+
+Live trading needs a typed phrase (`ENABLE LIVE TRADING`), never a checkbox —
+and is still refused, because the Phase 7 pre-flight checklist does not exist.
+It cannot be enabled from Telegram by anyone, ever.
+
+### Defaults that fail safe
+
+A symbol you have never ruled on defaults to **needs approval**, not allowed.
+Forbidden always wins over any strategy signal.
+
+### The kill switch works without the engine
+
+The dashboard and engine normally run as separate processes, so a kill switch
+that needed the engine attached would be useless exactly when you need it.
+Instead it acts **directly on the broker** — cancelling orders and optionally
+closing positions immediately — and persists a flag that stops the engine
+wherever it is running, and keeps it stopped across restarts. Clearing it is a
+deliberate, separate action.
+
+Both interfaces require a second confirmation, and the Telegram one expires
+after two minutes: the situation that prompted a kill changes fast.
+
+## Purification and zakat
+
+**Purification never invents a number.** A dividend with no published
+non-permissible income ratio is recorded with a zero amount *and a flag* — the
+report distinguishes "nothing owed" from "we do not know", because acting on
+the first when it is really the second means keeping money that is not yours.
+The CSV export marks those rows `UNKNOWN` and says in the file that they are
+not zero.
+
+Every entry records **how** its figure was derived. Issuer-published rates are
+authoritative; anything else is flagged provisional.
+
+**Zakat is an estimate, not a ruling**, and the type says so. Two methods are
+offered because scholars differ; the method used is named in every output,
+holdings that cannot be valued under it are excluded *and listed* rather than
+counted as zero, and the caveats note that the calculation looks at one date
+and does not check the hawl.
+
+## Audit
+
+The `Audit` tab shows every decision, action and refusal, filterable by event
+type. Append-only: nothing in this application updates or deletes a row.
+
+## Deployment
+
+```bash
+cp .env.example .env    # fill in your credentials
+docker compose up -d
+```
+
+Two containers sharing one data volume. Separate on purpose: the dashboard
+restarting must not interrupt the engine, and an engine crash must not take
+away the view you need to see why.
+
+- Runs as a **non-root user**. A trading process has credentials in its
+  environment; it does not also need root in its container.
+- The dashboard binds to **127.0.0.1 only**. It has a kill switch and shows
+  account balances — it must not be reachable from the internet. Put it behind
+  a VPN or an authenticating reverse proxy for remote access.
+- `config/` is mounted read-only; the database, cache and logs live on a named
+  volume so a rebuild never destroys trade history.
+- The image's default command is the health check, not the engine, so
+  `docker run` cannot start trading by accident.
+
 ## Avoiding look-ahead bias
 
 The single most common way a personal trading system produces a great backtest
@@ -484,6 +564,20 @@ and loses money live. The defences:
   falls back to a deterministic generator so it still runs. Anything computed
   from it is meaningless, and it says so at startup, in the container banner and
   in every fetch result.
+
+### Phase 6 specifically
+
+- The Docker images are written but have not been built or run here — Docker is
+  not installed on this machine. Treat the first `docker compose up` as
+  unverified.
+- Purification has no data: dividends are recorded as received, and nothing has
+  traded yet. The ratios must come from each fund's published purification rate,
+  which you enter.
+- The dashboard's Controls tab shows engine state only when an engine is
+  attached in the same process. Pause and resume are unavailable from a
+  separate dashboard process; the kill switch works either way.
+- Zakat offers the net-zakatable-assets method but has no source for the
+  per-holding ratios, so that method currently excludes everything.
 
 ### Phase 5 specifically
 

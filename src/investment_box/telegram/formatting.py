@@ -304,11 +304,15 @@ def format_help(translator: Translator, mode: TradingMode) -> str:
             ("/funds", t.t("telegram.help_funds")),
             ("/history [n]", t.t("telegram.help_history")),
             ("/pending", t.t("telegram.help_pending")),
+            ("/purification", t.t("telegram.help_purification")),
+            ("/pause", t.t("telegram.help_pause")),
+            ("/resume", t.t("telegram.help_resume")),
+            ("/kill", t.t("telegram.help_kill")),
             ("/help", t.t("telegram.help_help")),
         ]
         lines = [f"<b>{esc(t.t('telegram.help_title'))}</b>", ""]
         lines += [f"<code>{esc(cmd)}</code> — {esc(desc)}" for cmd, desc in commands]
-        lines += ["", f"<i>{esc(t.t('telegram.help_readonly_note'))}</i>"]
+        lines += ["", f"<i>{esc(t.t('telegram.help_confirm_note'))}</i>"]
         lines += [f"<i>{esc(t.t('telegram.help_live_note'))}</i>"]
         return "\n".join(lines)
 

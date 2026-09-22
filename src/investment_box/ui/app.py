@@ -12,15 +12,25 @@ Run it:
 
 from __future__ import annotations
 
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
 import altair as alt
 import pandas as pd
 import streamlit as st
 
+from investment_box.core.clock import to_display
 from investment_box.core.types import ComplianceStatus
 from investment_box.services.container import ServiceContainer
 from investment_box.strategies import STRATEGY_REGISTRY
 from investment_box.ui import components as ui
-from investment_box.ui.state import clear_caches, get_research, get_state
+from investment_box.ui.controls import render_controls
+from investment_box.ui.state import (
+    clear_caches,
+    get_research,
+    get_settings_service,
+    get_state,
+)
 
 st.set_page_config(
     page_title="Investment Box",
@@ -52,20 +62,38 @@ def main() -> None:
             help="Which strategy's candidates to show.",
         )
 
-        if st.button("Refresh data", use_container_width=True):
+        if st.button("Refresh data", width='stretch'):
             clear_caches()
             st.rerun()
 
         st.divider()
-        st.caption("Read-only. Controls arrive in Phase 6.")
+        st.caption("Controls are on the Controls tab.")
 
     startup = services.settings.startup_warnings()
     if services.is_using_mock_broker:
         startup.insert(0, "Running against the in-memory mock broker; balances are simulated.")
     ui.warning_list(startup)
 
-    overview, positions_tab, candidates_tab, compliance_tab, universe_tab = st.tabs(
-        ["Overview", "Positions", "Candidates", "Compliance", "Universe"]
+    (
+        overview,
+        positions_tab,
+        candidates_tab,
+        compliance_tab,
+        universe_tab,
+        purification_tab,
+        controls_tab,
+        audit_tab,
+    ) = st.tabs(
+        [
+            "Overview",
+            "Positions",
+            "Candidates",
+            "Compliance",
+            "Universe",
+            "Purification",
+            "Controls",
+            "Audit",
+        ]
     )
 
     with overview:
@@ -78,6 +106,12 @@ def main() -> None:
         _compliance(strategy_name)
     with universe_tab:
         _universe(strategy_name)
+    with purification_tab:
+        _purification(services)
+    with controls_tab:
+        render_controls(get_settings_service(), services, engine=None)
+    with audit_tab:
+        _audit(services)
 
 
 def _overview(services: ServiceContainer, tz: str) -> None:
@@ -134,7 +168,7 @@ def _overview(services: ServiceContainer, tz: str) -> None:
         )
         .properties(height=280)
     )
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width='stretch')
 
 
 def _positions(services: ServiceContainer, tz: str) -> None:
@@ -164,7 +198,7 @@ def _positions(services: ServiceContainer, tz: str) -> None:
                 ),
             }
         )
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
     ui.timestamp_caption(view.taken_at, tz)
 
     unprotected = [p for p in view.positions if p.stop_loss_price and p.stop_is_synthetic]
@@ -207,7 +241,7 @@ def _candidates(strategy_name: str) -> None:
         )
 
     st.dataframe(
-        ui.candidate_table(snapshot.candidates), use_container_width=True, hide_index=True
+        ui.candidate_table(snapshot.candidates), width='stretch', hide_index=True
     )
 
     st.subheader("Detail")
@@ -289,7 +323,7 @@ def _compliance(strategy_name: str) -> None:
                 )
                 .properties(height=260)
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
 
     st.subheader("Compliance status")
     rows = []
@@ -310,7 +344,7 @@ def _compliance(strategy_name: str) -> None:
                 "Reason": record.reason if record else "no screen on record",
             }
         )
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
     st.caption(
         "Only COMPLIANT symbols are traded automatically. DOUBTFUL and UNKNOWN "
         "always require a human decision, and a screen older than the re-screen "
@@ -370,11 +404,135 @@ def _universe(strategy_name: str) -> None:
                 "Verdict": entry.reason,
             }
         )
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
 
     summary = universe.rejection_summary()
     if summary:
         st.caption("Exclusions by reason: " + ", ".join(f"{k} ({v})" for k, v in summary.items()))
+
+
+
+def _purification(services: ServiceContainer) -> None:
+    """Purification owed, and what could not be computed."""
+    from investment_box.shariah.purification import PurificationTracker
+    from investment_box.shariah.zakat import ZakatHolding, ZakatMethod, estimate_zakat
+
+    tracker = PurificationTracker(services.database, services.audit, clock=services.clock)
+    report = tracker.report()
+
+    columns = st.columns(4)
+    columns[0].metric("Dividends recorded", ui.money(report.total_dividends))
+    columns[1].metric("Total to purify", ui.money(report.total_due))
+    columns[2].metric("Outstanding", ui.money(report.outstanding))
+    columns[3].metric("Already purified", ui.money(report.already_purified))
+
+    ui.warning_list(report.warnings(), "Gaps in this figure")
+
+    if not report.entries:
+        ui.empty_state(
+            "No dividends recorded yet.",
+            "Dividends are recorded as they are received. Purification needs each "
+            "fund's published non-permissible income ratio, which you enter.",
+        )
+    else:
+        rows = [
+            {
+                "Symbol": e.symbol,
+                "Pay date": e.pay_date.isoformat(),
+                "Gross": ui.money(e.gross_amount),
+                "Ratio": (
+                    f"{e.non_permissible_ratio:.4%}"
+                    if e.non_permissible_ratio is not None
+                    else "UNKNOWN"
+                ),
+                "To purify": ui.money(e.amount_due),
+                "Method": e.method.value,
+                "Status": "purified" if e.purified_at else "outstanding",
+            }
+            for e in report.entries
+        ]
+        st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
+        st.download_button(
+            "Download CSV",
+            data=tracker.to_csv(report),
+            file_name="purification.csv",
+            mime="text/csv",
+        )
+
+    st.divider()
+    st.subheader("Zakat estimate")
+    st.caption(
+        "An estimate produced by software, not a ruling. Scholars differ on how "
+        "trading assets are treated."
+    )
+
+    view = services.portfolio.get_account_view()
+    method = st.radio(
+        "Method",
+        list(ZakatMethod),
+        format_func=lambda m: m.value.replace("_", " "),
+        horizontal=True,
+    ) or ZakatMethod.FULL_MARKET_VALUE
+    nisab_raw = st.text_input(
+        "Nisab threshold (USD, optional)",
+        help="Tracks the current gold or silver price. Leave blank to skip the check.",
+    )
+    nisab = None
+    if nisab_raw.strip():
+        try:
+            nisab = Decimal(nisab_raw)
+        except Exception:  # noqa: BLE001
+            st.warning("Not a valid amount; ignoring the threshold.")
+
+    estimate = estimate_zakat(
+        as_of=services.clock.now().date(),
+        holdings=[
+            ZakatHolding(symbol=p.symbol, market_value=p.market_value)
+            for p in view.positions
+        ],
+        cash=view.cash_settled + view.cash_unsettled,
+        method=method,
+        nisab_threshold=nisab,
+    )
+
+    columns = st.columns(3)
+    columns[0].metric("Zakatable base", ui.money(estimate.zakatable_base))
+    columns[1].metric("Estimated zakat (2.5%)", ui.money(estimate.estimated_zakat))
+    columns[2].metric(
+        "Meets nisab",
+        "—" if estimate.meets_nisab is None else ("yes" if estimate.meets_nisab else "no"),
+    )
+    ui.warning_list(estimate.caveats(), "Read before using this figure")
+
+
+def _audit(services: ServiceContainer) -> None:
+    """The full audit trail: every decision, action and refusal."""
+    entries = services.audit.recent(limit=300)
+    if not entries:
+        ui.empty_state("Nothing recorded yet.")
+        return
+
+    event_types = sorted({e.event_type for e in entries})
+    chosen = st.multiselect("Filter by event type", event_types, default=[])
+    filtered = [e for e in entries if not chosen or e.event_type in chosen]
+
+    rows = [
+        {
+            "When": to_display(
+                e.created_at, ZoneInfo(services.settings.i18n.display_timezone)
+            ).strftime("%Y-%m-%d %H:%M"),
+            "Event": e.event_type,
+            "Actor": e.actor,
+            "Symbol": e.symbol or "—",
+            "Summary": e.summary,
+        }
+        for e in filtered
+    ]
+    st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True, height=520)
+    st.caption(
+        f"{len(filtered)} of {len(entries)} recent entries. The audit log is "
+        f"append-only: nothing in this application updates or deletes a row."
+    )
 
 
 main()

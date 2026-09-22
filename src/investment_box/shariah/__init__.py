@@ -16,15 +16,28 @@ from investment_box.shariah.providers.base import (
     ScreeningProvider,
     ScreenResult,
 )
+from investment_box.shariah.purification import (
+    PurificationMethod,
+    PurificationReport,
+    PurificationTracker,
+)
 from investment_box.shariah.status import ComplianceRecord, ComplianceTracker
+from investment_box.shariah.zakat import ZakatEstimate, ZakatHolding, ZakatMethod, estimate_zakat
 
 __all__ = [
     "ComplianceRecord",
     "ComplianceTracker",
     "FinancialRatios",
     "HardConstraints",
+    "PurificationMethod",
+    "PurificationReport",
+    "PurificationTracker",
     "ScreenResult",
     "ScreeningProvider",
+    "ZakatEstimate",
+    "ZakatHolding",
+    "ZakatMethod",
     "assert_order_permissible",
+    "estimate_zakat",
     "is_forbidden_instrument",
 ]

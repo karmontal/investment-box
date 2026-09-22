@@ -63,25 +63,43 @@ class TestRenders:
         assert "mock broker" in rendered.lower()
 
 
-class TestReadOnly:
-    def test_no_write_controls(self, app: AppTest) -> None:
-        """Phase 4 ships no widget that changes state.
+class TestControlSafety:
+    """Controls exist from Phase 6, but the dangerous ones are gated."""
 
-        The only button is Refresh, which clears caches. A control that appears
-        to pause a non-existent engine would be worse than no control.
-        """
+    def test_kill_switch_requires_a_second_confirmation(self, app: AppTest) -> None:
+        """One click must never kill the engine."""
         app.run()
-        labels = [button.label for button in app.button]
-        assert labels == ["Refresh data"], f"unexpected controls: {labels}"
+        labels = [b.label for b in app.button]
+        assert any("KILL SWITCH" in label for label in labels)
+        # The confirming button only appears after the first click.
+        assert not any("Yes, do it" in label for label in labels)
 
-    def test_no_forms(self, app: AppTest) -> None:
+    def test_live_trading_button_is_disabled(self, app: AppTest) -> None:
         app.run()
-        assert not getattr(app, "form", [])
+        live_buttons = [b for b in app.button if "live trading" in b.label.lower()]
+        assert live_buttons
+        assert all(b.disabled for b in live_buttons)
 
-    def test_read_only_notice_is_visible(self, app: AppTest) -> None:
+    def test_live_requires_a_typed_phrase_not_a_checkbox(self, app: AppTest) -> None:
+        """A checkbox can be hit by accident; a phrase cannot."""
+        from investment_box.ui.controls import LIVE_CONFIRMATION_PHRASE
+
         app.run()
-        captions = " ".join(c.value for c in app.caption)
-        assert "Read-only" in captions
+        placeholders = [getattr(i, "placeholder", "") for i in app.text_input]
+        assert LIVE_CONFIRMATION_PHRASE in " ".join(placeholders)
+
+    def test_hard_constraints_are_stated_not_toggleable(self, app: AppTest) -> None:
+        """A greyed-out switch implies it could be un-greyed. These cannot."""
+        app.run()
+        rendered = " ".join(m.value for m in app.markdown)
+        assert "never permitted" in rendered
+        toggles = [c.label for c in app.checkbox]
+        for forbidden in ("margin", "short", "leverage", "crypto"):
+            assert not any(forbidden in label.lower() for label in toggles)
+
+    def test_controls_tab_is_present(self, app: AppTest) -> None:
+        app.run()
+        assert not app.exception
 
 
 class TestSidebar:

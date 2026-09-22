@@ -1,0 +1,21 @@
+# Never copy secrets or local state into an image.
+.env
+.env.*
+!.env.example
+config/local.yaml
+data/
+reports/
+*.db
+*.db-*
+
+.git/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+tests/
+.DS_Store
