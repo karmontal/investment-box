@@ -23,7 +23,7 @@ typed confirmation in the dashboard.
 | 2 | Telegram broadcast + control bot + approval framework | **Complete** |
 | 3 | Shariah module, universe, features, strategies, backtester | **Complete** |
 | 4 | Forecasts, candidate ranking, Streamlit dashboard | **Complete** |
-| 5 | Risk manager, paper execution, scheduler | Not started |
+| 5 | Risk manager, paper execution, scheduler | **Complete** |
 | 6 | User controls, purification/zakat, audit log, Docker | Not started |
 | 7 | Live mode behind a pre-flight checklist | Not started |
 
@@ -59,6 +59,12 @@ Open the dashboard (read-only):
 
 ```bash
 uv run streamlit run src/investment_box/ui/app.py
+```
+
+Run one engine cycle and see exactly what it would and would not do:
+
+```bash
+uv run python scripts/run_engine.py --once
 ```
 
 Lint and type-check:
@@ -123,6 +129,8 @@ features/        indicators (no look-ahead), regime detection, feature pipeline
 strategies/      base + rotation, breakout, mean reversion, ML classifier
 backtest/        walk-forward engine, cost model, metrics, comparison report
 forecast/        probabilities with confidence and calibration; candidate ranking
+risk/            sizing, every limit, and the settled-cash ledger
+engine/          the cycle, the scheduler, the state machine, the kill switch
 ui/              read-only Streamlit dashboard
 execution/       Broker protocol + mock broker; Alpaca adapter in Phase 5
 services/        the ONLY read/write path to state -- used by UI and Telegram alike
@@ -337,6 +345,84 @@ and alerts outrank summaries, so the messages most worth keeping survive.
 With no bot token the entire stack runs on an in-memory transport. Missing
 credentials degrade to silence, never to a crash.
 
+## The engine
+
+```bash
+uv run python scripts/run_engine.py --once   # one cycle
+uv run python scripts/run_engine.py          # scheduled
+```
+
+One cycle, in a fixed order: reconcile against the broker, settle matured
+proceeds, exit anything that turned non-compliant, manage stops and targets,
+generate candidates, risk-check and size, route by autonomy level, snapshot
+equity.
+
+**Exits always run before entries.** Freeing capital and honouring a compliance
+exit matter more than opening something new — and at $500 the cash from an exit
+is often what makes the next entry possible at all.
+
+### It starts paused when anything is unsafe
+
+The engine refuses to trade, and says why, rather than starting and relying on
+a later check. Running it today reports:
+
+```
+ENGINE WILL NOT TRADE
+  ! every symbol is unverified (SPUS, HLAL, SPSK, SPRE, SPTE, SPWO, UMMA, MNZL)
+  ! the broker account has margin enabled; this application requires a CASH account
+```
+
+### Settled cash is the binding constraint
+
+Only settled cash may fund a purchase. Spending unsettled proceeds is a
+good-faith violation, and three of them restricts the account for 90 days.
+
+The ledger is **persisted**, because an in-memory one would reset to "all
+settled" after a crash — failing in exactly the wrong direction. It is also
+authoritative over the broker's own buying-power figure, which can include
+unsettled proceeds.
+
+`assert_affordable` raises rather than returning a boolean: a good-faith
+violation is not a condition to branch on.
+
+### Every limit, in order
+
+Paused → daily loss → position count → already held → trade frequency → sector
+→ sizing → settled cash → Shariah constraints. A refusal names the **first**
+rule broken, not the last.
+
+Two rules that cut against the obvious implementation:
+
+- **A pause never blocks an exit.** Being unable to close a losing position
+  because a loss limit was hit would be worse than the condition that caused
+  the pause.
+- **The kill switch is not a pause.** It is terminal until restart, so a stray
+  `/resume` cannot undo it. It cancels orders *before* closing positions, so a
+  pending buy cannot fill mid-liquidation, and it keeps going when a step fails
+  — a partial kill that names what it could not close is far more useful than
+  one that aborts halfway.
+
+### Orders cannot be placed twice
+
+Every order carries a deterministic key derived from (symbol, side, intent,
+date), written to the database under a unique constraint **before** the broker
+is called. A retry after an ambiguous timeout cannot place a second order.
+Alpaca's `client_order_id` carries the same key, so the broker enforces it too.
+
+The Shariah gate runs on the **final** order — final quantity, final price —
+immediately before submission, not on the proposal.
+
+### Execution shapes
+
+| Case | Order | Stop |
+|---|---|---|
+| Whole share | Limit + bracket legs | Broker-side |
+| Fractional | Market (broker restriction) | Engine-managed |
+| Any exit | Market | — |
+
+Exits are market orders deliberately: a limit exit that does not fill leaves a
+position the engine believes is closed.
+
 ## Avoiding look-ahead bias
 
 The single most common way a personal trading system produces a great backtest
@@ -398,6 +484,24 @@ and loses money live. The defences:
   falls back to a deterministic generator so it still runs. Anything computed
   from it is meaningless, and it says so at startup, in the container banner and
   in every fetch result.
+
+### Phase 5 specifically
+
+- **Your Alpaca paper account has margin enabled** (multiplier 4.0, which is
+  Alpaca's default). The engine will not place a single order until that
+  changes — reset the paper account and choose a cash account. The app still
+  runs read-only so you can see the problem.
+- The engine has not been run against a live market session yet. Everything
+  here is verified against the mock broker and a single real cycle that
+  correctly refused to trade.
+- Sector concentration is structural only: the data layer has no sector
+  metadata for these ETFs, so the check returns "cannot judge" rather than
+  silently passing everything.
+- The daily and weekly summaries are wired but have no data until the engine
+  has run for a day and a week respectively.
+- Trade P&L is recorded from the last known price at exit, not the actual fill.
+  Fill-accurate P&L needs the order to reach a terminal state first, which the
+  next reconcile picks up.
 
 ### Phase 4 specifically
 

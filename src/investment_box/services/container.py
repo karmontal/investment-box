@@ -155,17 +155,42 @@ def _select_broker(
             f"Make both agree before starting."
         )
 
-    # Phase 5 returns the real AlpacaBroker here. Until the execution layer and
-    # its reconciliation logic exist, connecting to a real account would let a
-    # half-built engine place orders.
-    log.warning(
-        "broker.alpaca_not_wired",
-        action="using mock broker",
-        note="the Alpaca adapter is wired in Phase 5",
-    )
-    return MockBroker(
-        starting_cash=Decimal(str(settings.capital.allocation_usd)),
-        clock=clock,
-        calendar=calendar,
-        settlement_days=settings.settlement.settlement_days,
-    )
+    from investment_box.execution.alpaca_broker import AlpacaBroker
+
+    try:
+        broker = AlpacaBroker(
+            api_key=secrets.alpaca_api_key.get_secret_value(),  # type: ignore[union-attr]
+            secret_key=secrets.alpaca_secret_key.get_secret_value(),  # type: ignore[union-attr]
+            paper=not wants_live,
+            base_url=secrets.alpaca_base_url,
+        )
+    except Exception as exc:  # noqa: BLE001 - fall back rather than fail to start
+        log.error(
+            "broker.alpaca_init_failed",
+            error=str(exc),
+            action="falling back to the mock broker",
+        )
+        return MockBroker(
+            starting_cash=Decimal(str(settings.capital.allocation_usd)),
+            clock=clock,
+            calendar=calendar,
+            settlement_days=settings.settlement.settlement_days,
+        )
+
+    # Verify the account is a cash account. A margin account would let a bug
+    # borrow, which this application must never do -- so orders are refused.
+    # But the failure must not stop the process: the dashboard, the bot and the
+    # read-only views should still work so the operator can SEE the problem.
+    # build_engine() turns this into a blocker, and AlpacaBroker.submit_order
+    # re-checks before every order, so nothing can trade meanwhile.
+    try:
+        broker.verify_cash_account()
+    except Exception as exc:  # noqa: BLE001 - reported, not fatal
+        log.error(
+            "broker.not_a_cash_account",
+            error=str(exc),
+            action="continuing read-only; no order can be placed",
+        )
+
+    log.info("broker.alpaca_connected", paper=broker.is_paper, url=broker.base_url)
+    return broker

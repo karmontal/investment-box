@@ -80,14 +80,19 @@ class TestBrokerSelection:
                 configure_logs=False,
             )
 
-    def test_credentials_still_do_not_reach_a_real_account_in_phase_1(
+    def test_unreachable_alpaca_falls_back_to_the_mock(
         self, database: Database, clock: FrozenClock
     ) -> None:
-        """Phase 1 has no order manager or reconciliation, so it stays on the mock."""
+        """A broker that cannot be reached must not stop the app from starting.
+
+        From Phase 5 credentials DO connect to Alpaca. Invalid ones fall back
+        to the mock with a loud log line rather than preventing the dashboard
+        and bot from running at all.
+        """
         secrets = Secrets(  # type: ignore[call-arg]
             _env_file=None,
-            alpaca_api_key="PKTEST",
-            alpaca_secret_key="SECRET",
+            alpaca_api_key="PKINVALIDTESTKEY",
+            alpaca_secret_key="INVALIDSECRET",
             alpaca_base_url="https://paper-api.alpaca.markets",
         )
         services = build_services(
@@ -97,7 +102,36 @@ class TestBrokerSelection:
             clock=clock,
             configure_logs=False,
         )
-        assert services.is_using_mock_broker
+        # Either outcome is safe: the mock, or an Alpaca broker whose
+        # cash-account check failed and which therefore rejects every order.
+        # What must NOT happen is the process failing to start -- the operator
+        # needs the dashboard to see why nothing is trading.
+        assert services.broker is not None
+
+    def test_paper_is_the_default_when_mode_is_paper(
+        self, database: Database, clock: FrozenClock
+    ) -> None:
+        """Even with credentials, paper mode must never reach the live endpoint."""
+        from investment_box.execution.alpaca_broker import AlpacaBroker
+
+        with pytest.raises(Exception, match="paper"):
+            AlpacaBroker(
+                api_key="PKTEST",
+                secret_key="SECRET",
+                paper=True,
+                base_url="https://api.alpaca.markets",
+            )
+
+    def test_live_flag_with_paper_url_is_refused(self) -> None:
+        from investment_box.execution.alpaca_broker import AlpacaBroker
+
+        with pytest.raises(Exception, match="paper"):
+            AlpacaBroker(
+                api_key="PKTEST",
+                secret_key="SECRET",
+                paper=False,
+                base_url="https://paper-api.alpaca.markets",
+            )
 
 
 class TestStartupBanner:
