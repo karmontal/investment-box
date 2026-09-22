@@ -239,7 +239,11 @@ class CostsConfig(_Frozen):
 
 class DataConfig(_Frozen):
     provider: Literal["yfinance", "alpaca"] = "yfinance"
-    cache_dir: Path = Path("./data/cache")
+    #: Where cached bars live. ``None`` means "under data_dir", which is what
+    #: you almost always want: one setting should relocate ALL state. An
+    #: independent relative default silently ignored IB__DATA_DIR and made the
+    #: container write into its read-only app directory.
+    cache_dir: Path | None = None
     cache_ttl_hours: int = Field(default=12, ge=0)
     history_start: str = "2015-01-01"
     bar_timeframe: Literal["1d"] = "1d"
@@ -423,6 +427,16 @@ class Settings(BaseSettings):
     @property
     def db_path(self) -> Path:
         return self.data_dir / "investment_box.db"
+
+    @property
+    def resolved_cache_dir(self) -> Path:
+        """Where cached bars actually go.
+
+        Use this rather than ``data.cache_dir``: it falls back to a directory
+        under ``data_dir`` so that setting ``IB__DATA_DIR`` relocates every
+        piece of state, which is what a containerised deployment needs.
+        """
+        return self.data.cache_dir or (self.data_dir / "cache")
 
     @property
     def db_url(self) -> str:

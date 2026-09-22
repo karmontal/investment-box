@@ -89,7 +89,9 @@ costs:
 
 data:
   provider: yfinance               # yfinance | alpaca
-  cache_dir: ./data/cache
+  # Leave unset so it follows data_dir. Set it only to put the parquet cache
+  # somewhere other than alongside the database.
+  cache_dir: null
   cache_ttl_hours: 12
   history_start: "2015-01-01"
   bar_timeframe: 1d

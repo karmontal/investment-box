@@ -493,7 +493,20 @@ type. Append-only: nothing in this application updates or deletes a row.
 ```bash
 cp .env.example .env    # fill in your credentials
 docker compose up -d
+docker compose ps       # both services should report (healthy)
 ```
+
+On macOS without Docker Desktop, [Colima](https://github.com/abiosoft/colima)
+works and needs no admin password:
+
+```bash
+brew install colima docker docker-compose docker-buildx
+colima start --cpu 2 --memory 4 --disk 20
+```
+
+`docker-buildx` is not optional: the Dockerfile uses BuildKit cache mounts, and
+without buildx the build falls back to the legacy builder and fails on
+`--mount`.
 
 Two containers sharing one data volume. Separate on purpose: the dashboard
 restarting must not interrupt the engine, and an engine crash must not take
@@ -505,7 +518,11 @@ away the view you need to see why.
   account balances — it must not be reachable from the internet. Put it behind
   a VPN or an authenticating reverse proxy for remote access.
 - `config/` is mounted read-only; the database, cache and logs live on a named
-  volume so a rebuild never destroys trade history.
+  volume so a rebuild never destroys trade history. **`IB__DATA_DIR` relocates
+  all of it** — a test asserts no state path escapes it.
+- Healthchecks **build the service container**, not just import the package. An
+  import-only check passed while the app was completely broken, which is the
+  failure the check exists to catch.
 - The image's default command is the health check, not the engine, so
   `docker run` cannot start trading by accident.
 
@@ -643,9 +660,10 @@ and loses money live. The defences:
 
 ### Phase 6 specifically
 
-- The Docker images are written but have not been built or run here — Docker is
-  not installed on this machine. Treat the first `docker compose up` as
-  unverified.
+- The Docker stack is **built and verified**: both containers start healthy,
+  the engine registers all four scheduler jobs and correctly refuses to trade,
+  the dashboard renders, and state survives container recreation on the named
+  volume.
 - Purification has no data: dividends are recorded as received, and nothing has
   traded yet. The ratios must come from each fund's published purification rate,
   which you enter.

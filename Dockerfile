@@ -1,3 +1,8 @@
+# syntax=docker/dockerfile:1
+# The syntax directive and the cache mounts below require BuildKit, which is
+# the default for `docker build` when buildx is installed. Homebrew's docker
+# formula does not include buildx: install docker-buildx too, or the build
+# falls back to the legacy builder and fails on the --mount flags.
 # Multi-stage so the runtime image carries no build tooling.
 FROM python:3.11-slim AS builder
 

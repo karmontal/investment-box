@@ -280,3 +280,45 @@ class TestNoImportCycles:
         assert result.returncode == 0, (
             f"importing {module} first failed:\n{result.stderr[-1500:]}"
         )
+
+
+class TestDataDirRelocatesEverything:
+    """One setting must move ALL state.
+
+    Found by actually running the container: cache_dir defaulted to a relative
+    './data/cache' independent of data_dir, so IB__DATA_DIR=/data did not move
+    it and the non-root container tried to write inside /app.
+    """
+
+    def test_cache_dir_follows_data_dir(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("IB__DATA_DIR", "/somewhere/else")
+        settings = load_settings()
+        assert settings.resolved_cache_dir == Path("/somewhere/else/cache")
+
+    def test_db_path_follows_data_dir(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("IB__DATA_DIR", "/somewhere/else")
+        assert load_settings().db_path == Path("/somewhere/else/investment_box.db")
+
+    def test_every_state_path_is_under_data_dir(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Nothing may escape data_dir, or a container cannot relocate it."""
+        monkeypatch.setenv("IB__DATA_DIR", "/data")
+        settings = load_settings()
+        root = Path("/data")
+        for path in (settings.db_path, settings.resolved_cache_dir):
+            assert root in path.parents or path == root, f"{path} escapes {root}"
+
+    def test_explicit_cache_dir_still_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("IB__DATA_DIR", "/data")
+        monkeypatch.setenv("IB__DATA__CACHE_DIR", "/fast-disk/cache")
+        assert load_settings().resolved_cache_dir == Path("/fast-disk/cache")
+
+    def test_repository_uses_the_resolved_path(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        from investment_box.data.repository import MarketDataRepository
+
+        monkeypatch.setenv("IB__DATA_DIR", str(tmp_path / "state"))
+        repository = MarketDataRepository.from_settings(load_settings())
+        assert repository.cache.directory == tmp_path / "state" / "cache"

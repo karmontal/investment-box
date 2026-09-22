@@ -24,7 +24,11 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
-      test: ["CMD", "python", "-c", "import investment_box; print('ok')"]
+      # Builds the service container, not just an import. A bare import passes
+      # even when the process cannot write its data directory -- which is
+      # exactly the failure this check exists to catch.
+      test: ["CMD", "python", "-c",
+             "from investment_box.services.container import build_services; build_services(configure_logs=False)"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -60,8 +64,10 @@ services:
     depends_on: [engine]
     restart: unless-stopped
     healthcheck:
+      # Streamlit's own endpoint answers 200 even when the app script raises,
+      # so check that the services build too.
       test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+             "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health'); from investment_box.services.container import build_services; build_services(configure_logs=False)"]
       interval: 60s
       timeout: 10s
       retries: 3
