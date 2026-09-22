@@ -20,6 +20,8 @@ dependencies = [
     "tenacity>=9.0",
     "python-telegram-bot>=21.9",
     "scikit-learn>=1.5",
+    "streamlit>=1.40",
+    "altair>=5.4",
 ]
 
 [project.optional-dependencies]

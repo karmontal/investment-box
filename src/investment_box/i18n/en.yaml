@@ -151,3 +151,6 @@ funds:
 
 history:
   title: Closed trades
+  regime: Market regime
+  probability: Probability
+  confidence: Confidence

@@ -1,0 +1,11 @@
+# Dashboard defaults. Headless so `streamlit run` does not try to open a
+# browser on a VPS, and usage stats off because this is a private tool.
+[server]
+headless = true
+port = 8501
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "dark"

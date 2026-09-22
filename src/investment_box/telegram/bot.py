@@ -23,6 +23,7 @@ from investment_box.i18n.translator import Translator
 from investment_box.services.approvals import ApprovalService
 from investment_box.services.audit import AuditService
 from investment_box.services.portfolio import PortfolioService
+from investment_box.services.research import ResearchService
 from investment_box.telegram.approvals import ApprovalNotifier
 from investment_box.telegram.auth import AuthGuard
 from investment_box.telegram.broadcast import BroadcastChannel
@@ -181,6 +182,7 @@ def build_telegram_stack(
     transport: TelegramTransport | None = None,
     data_provider_name: str = "unknown",
     engine_state: str = "idle",
+    research: ResearchService | None = None,
 ) -> TelegramStack:
     """Wire the Telegram stack from config.
 
@@ -253,6 +255,7 @@ def build_telegram_stack(
             clock=clock,
             engine_state=engine_state,
             data_provider_name=data_provider_name,
+            research=research,
         )
     )
 

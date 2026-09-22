@@ -191,3 +191,44 @@ class TestTelegramChannelValidation:
 
     def test_garbage_is_caught(self) -> None:
         assert self._secrets("not-an-id").telegram_channel_problem is not None
+
+
+class TestNoImportCycles:
+    """Every public package must import cleanly in isolation.
+
+    A cycle between forecast -> shariah -> services -> forecast shipped
+    undetected because the test suite happened to import in a safe order. This
+    imports each package first in a fresh interpreter, which is the only way
+    to catch it.
+    """
+
+    @pytest.mark.parametrize(
+        "module",
+        [
+            "investment_box.backtest",
+            "investment_box.config",
+            "investment_box.core",
+            "investment_box.data",
+            "investment_box.execution",
+            "investment_box.features",
+            "investment_box.forecast",
+            "investment_box.services",
+            "investment_box.shariah",
+            "investment_box.strategies",
+            "investment_box.telegram",
+            "investment_box.universe",
+        ],
+    )
+    def test_package_imports_first(self, module: str) -> None:
+        import subprocess
+        import sys
+
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", f"import {module}"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0, (
+            f"importing {module} first failed:\n{result.stderr[-1500:]}"
+        )

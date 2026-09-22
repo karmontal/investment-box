@@ -23,6 +23,7 @@ from investment_box.core.logging import get_logger
 from investment_box.i18n.translator import Translator
 from investment_box.services.approvals import ApprovalService
 from investment_box.services.portfolio import PortfolioService
+from investment_box.services.research import ResearchService, ResearchSnapshot
 from investment_box.telegram import formatting
 from investment_box.telegram.queue import MessageQueue
 
@@ -44,6 +45,10 @@ class CommandContext:
     clock: Clock = field(default_factory=SystemClock)
     engine_state: str = "idle"
     data_provider_name: str = "unknown"
+    #: Supplies live candidate rankings. When absent, /funds falls back to the
+    #: configured list without scores -- never to placeholder numbers, which
+    #: would be read as signals.
+    research: ResearchService | None = None
 
 
 class CommandHandlers:
@@ -78,10 +83,12 @@ class CommandHandlers:
         return formatting.format_positions(view, self.ctx.translator)
 
     def funds(self) -> str:
-        """The configured universe and its verification state.
+        """The universe with live rankings, compliance status and forecasts.
 
-        Phase 2 shows no ranking or score. Displaying a placeholder number here
-        would invite it being read as a signal; Phase 4 supplies the real one.
+        Goes through the same :class:`ResearchService` the dashboard uses, so
+        the two can never disagree. Without a research service it degrades to
+        the configured list with no scores -- never to placeholder numbers,
+        which would be read as signals.
         """
         try:
             universe = load_universe_file()
@@ -90,18 +97,67 @@ class CommandHandlers:
             tag = formatting.mode_tag(self.ctx.settings.trading_mode)
             return f"{tag}\nCould not read the universe file."
 
-        funds = [
+        configured = [
             {
-                "symbol": entry["symbol"],
+                "symbol": str(entry["symbol"]).upper(),
                 "name": entry.get("name"),
                 "verified": bool(entry.get("verified")),
-                # Populated from the screening tables in Phase 3. Until then it
-                # is absent rather than optimistically "compliant".
                 "compliance_status": None,
             }
             for entry in universe.get("etfs", [])
         ]
-        return formatting.format_funds(funds, self.ctx.settings.trading_mode, self.ctx.translator)
+
+        if self.ctx.research is None:
+            return formatting.format_funds(
+                configured, self.ctx.settings.trading_mode, self.ctx.translator
+            )
+
+        try:
+            snapshot = self._research_snapshot(universe)
+        except Exception as exc:  # noqa: BLE001 - fall back rather than fail the command
+            log.error("commands.research_failed", error=str(exc))
+            return formatting.format_funds(
+                configured, self.ctx.settings.trading_mode, self.ctx.translator
+            )
+
+        by_symbol = {c.symbol: c for c in snapshot.candidates}
+        funds = []
+        for entry in configured:
+            candidate = by_symbol.get(entry["symbol"])
+            if candidate is None:
+                funds.append(entry)
+                continue
+            compliance = candidate.compliance
+            funds.append(
+                {
+                    **entry,
+                    "compliance_status": (
+                        compliance.display_status.value if compliance else None
+                    ),
+                    "rank": candidate.rank,
+                    "candidate_status": candidate.status.value,
+                    "probability": candidate.probability,
+                    "confidence": candidate.confidence.value,
+                    "reason": candidate.reason,
+                }
+            )
+        # Preserve the ranking order the service produced.
+        funds.sort(key=lambda f: f.get("rank") or 999)
+
+        return formatting.format_funds(
+            funds,
+            self.ctx.settings.trading_mode,
+            self.ctx.translator,
+            warnings=snapshot.warnings,
+            regime=snapshot.regime.regime.value if snapshot.regime else None,
+        )
+
+    def _research_snapshot(self, universe: dict[str, Any]) -> ResearchSnapshot:
+        from investment_box.universe.builder import UniverseBuilder
+
+        assert self.ctx.research is not None
+        instruments = UniverseBuilder.load_instruments(universe)
+        return self.ctx.research.build(instruments)
 
     def history(self, limit_arg: str | None = None) -> str:
         limit = self._parse_limit(limit_arg)

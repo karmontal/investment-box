@@ -146,3 +146,6 @@ funds:
 
 history:
   title: الصفقات المغلقة
+  regime: حالة السوق
+  probability: الاحتمال
+  confidence: مستوى الثقة

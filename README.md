@@ -22,7 +22,7 @@ typed confirmation in the dashboard.
 | 1 | Skeleton, config, data layer, service layer, tests | **Complete** |
 | 2 | Telegram broadcast + control bot + approval framework | **Complete** |
 | 3 | Shariah module, universe, features, strategies, backtester | **Complete** |
-| 4 | Forecasts, candidate ranking, Streamlit dashboard | Not started |
+| 4 | Forecasts, candidate ranking, Streamlit dashboard | **Complete** |
 | 5 | Risk manager, paper execution, scheduler | Not started |
 | 6 | User controls, purification/zakat, audit log, Docker | Not started |
 | 7 | Live mode behind a pre-flight checklist | Not started |
@@ -53,6 +53,12 @@ Exercise the Telegram stack without sending anything:
 
 ```bash
 uv run python scripts/telegram_smoke.py
+```
+
+Open the dashboard (read-only):
+
+```bash
+uv run streamlit run src/investment_box/ui/app.py
 ```
 
 Lint and type-check:
@@ -116,6 +122,8 @@ universe/        the gates: verified -> rules -> compliant -> liquid -> enough h
 features/        indicators (no look-ahead), regime detection, feature pipeline
 strategies/      base + rotation, breakout, mean reversion, ML classifier
 backtest/        walk-forward engine, cost model, metrics, comparison report
+forecast/        probabilities with confidence and calibration; candidate ranking
+ui/              read-only Streamlit dashboard
 execution/       Broker protocol + mock broker; Alpaca adapter in Phase 5
 services/        the ONLY read/write path to state -- used by UI and Telegram alike
                  portfolio, audit (append-only), approvals (the state machine)
@@ -187,6 +195,85 @@ too small a sample, and refuses to call the highest return a recommendation.
 that reads tomorrow's prices. The test asserts that the report flags its result
 as implausible. That is the last line of defence: if a subtle look-ahead leak
 ever reaches a real strategy, the too-good-to-be-true check is what surfaces it.
+
+## Forecasts
+
+Principle 4 of the spec — probabilities with confidence and measured accuracy,
+never point price targets — is enforced as a type. `Forecast` has **no
+`target_price` field**, and a test asserts it never gains one.
+
+What a forecast carries:
+
+- **A direction probability**, not a target. Derived from the strategy's
+  *realised* out-of-sample win rate, not its raw model score.
+- **A return range** built from the instrument's own realised volatility,
+  symmetric around zero. Centring it on an expected drift would be a point
+  forecast in disguise.
+- **A confidence level** driven by evidence quality, not by the size of the
+  number. A 70% forecast from a strategy with 12 trades is LOW confidence.
+- **The strategy's track record**, so the probability is always read against
+  how often that strategy has actually been right.
+
+### Shrinkage
+
+A 70% win rate over 10 trades is not a 70% forecast. Probabilities are shrunk
+toward 50% in proportion to how thin the sample is:
+
+| Trades | 70% win rate becomes |
+|---|---|
+| 5 | 51.8% |
+| 30 | 57.5% |
+| 100 | 63.3% |
+| 5,000 | 69.8% |
+
+With no track record at all, the forecast is exactly 50% with `NONE`
+confidence — and `NONE` is never actionable. That is what a brand-new strategy
+gets, by default.
+
+Probabilities are also capped at 20–80%. Claiming 95% confidence on a five-day
+equity move is not credible whatever the model says.
+
+### Calibration
+
+A model that says 65% is useful only if those things happen about 65% of the
+time. That is calibration, and it is *not* implied by accuracy. It is measured
+three ways — Brier score, a reliability curve, and signed calibration error —
+and shown next to every forecast. A probability without its calibration is a
+number with no units.
+
+If a strategy's Brier score is worse than always guessing 50% (0.250), its
+confidence drops to `NONE` and the dashboard says its probabilities are worse
+than no probability at all.
+
+### Ranking
+
+Candidates are scored on **edge weighted by confidence**, so an unproven
+strategy's 70% cannot outrank a well-evidenced strategy's 58%. Every candidate
+carries the specific reason it is or is not actionable, because "why didn't it
+trade X?" is the question this view exists to answer.
+
+## Dashboard
+
+```bash
+uv run streamlit run src/investment_box/ui/app.py
+```
+
+Five tabs: Overview (equity, capital usage), Positions, Candidates
+(ranked, with forecasts), Compliance (including the calibration curve) and
+Universe (every gate, and why each symbol passed or failed).
+
+**Phase 4 ships no controls.** Every widget reads; none writes. The only button
+clears caches. The kill switch, autonomy selector and symbol rules arrive in
+Phase 6, once there is an engine for them to affect — a button that appears to
+pause a non-existent engine would be worse than no button. A test
+(`test_no_write_controls`) fails if a control is added before then.
+
+The design rule throughout: **a number never appears without the context needed
+to judge it.** A probability is shown with its confidence and sample size, a
+price with its timestamp, a backtest figure with its caveats.
+
+`/funds` in Telegram and the Candidates tab both go through the same
+`ResearchService`, and a test asserts they agree.
 
 ## Telegram
 
@@ -311,6 +398,20 @@ and loses money live. The defences:
   falls back to a deterministic generator so it still runs. Anything computed
   from it is meaningless, and it says so at startup, in the container banner and
   in every fetch result.
+
+### Phase 4 specifically
+
+- **Nothing is actionable right now**, and correctly so. Every seed ETF is
+  unverified, so the universe filter blocks all eight. Even if they were
+  verified, the rotation strategy's measured 47% win rate produces a 47%
+  forecast — below a coin flip — so the system declines to trade.
+- **Calibration has no data yet.** It compares predicted probabilities against
+  outcomes, which needs closed trades. Those arrive in Phase 5.
+- Track records must be registered explicitly (from a backtest run). Without
+  one, every forecast is a coin flip with `NONE` confidence.
+- The dashboard's compliance tracker is wired to the mock provider, so it
+  reports UNKNOWN for everything until a certified vendor is configured. The UI
+  says so rather than hiding it.
 
 ### Phase 3 specifically
 

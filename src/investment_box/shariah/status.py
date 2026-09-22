@@ -24,12 +24,12 @@ from dataclasses import dataclass
 from sqlalchemy import select
 
 from investment_box.config.schema import ShariahConfig
+from investment_box.core.audit import AuditSink
 from investment_box.core.clock import UTC, Clock, SystemClock
 from investment_box.core.logging import get_logger
 from investment_box.core.types import ComplianceStatus
 from investment_box.db.models import ComplianceScreen
 from investment_box.db.session import Database
-from investment_box.services.audit import AuditService
 from investment_box.shariah.providers.base import ScreeningProvider, ScreenResult
 
 log = get_logger(__name__)
@@ -70,7 +70,7 @@ class ComplianceTracker:
         provider: ScreeningProvider,
         database: Database,
         config: ShariahConfig,
-        audit: AuditService,
+        audit: AuditSink,
         *,
         clock: Clock | None = None,
     ) -> None:

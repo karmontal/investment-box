@@ -27,7 +27,11 @@ log = get_logger(__name__)
 
 
 class AuditService:
-    """Writes and reads the audit trail."""
+    """Writes and reads the audit trail.
+
+    Satisfies :class:`investment_box.core.audit.AuditSink`, which is what lower
+    layers depend on so the dependency graph stays acyclic.
+    """
 
     def __init__(self, database: Database, trading_mode: TradingMode) -> None:
         self.db = database

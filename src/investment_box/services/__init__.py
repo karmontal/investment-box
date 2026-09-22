@@ -13,12 +13,26 @@ method, they cannot disagree.
 from investment_box.services.approvals import ApprovalRequest, ApprovalService
 from investment_box.services.audit import AuditService
 from investment_box.services.container import ServiceContainer, build_services
+
+# ResearchService is imported lazily: it depends on forecast -> shariah, and
+# shariah's tracker is constructed by callers that import services first. A
+# module-level import here reintroduces a cycle.
 from investment_box.services.portfolio import (
     AccountView,
     CapitalUsage,
     PortfolioService,
     PositionView,
 )
+
+
+def __getattr__(name: str) -> object:
+    """Lazily expose ResearchService without creating an import cycle."""
+    if name in ("ResearchService", "ResearchSnapshot"):
+        from investment_box.services import research
+
+        return getattr(research, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "AccountView",
@@ -28,6 +42,8 @@ __all__ = [
     "CapitalUsage",
     "PortfolioService",
     "PositionView",
+    "ResearchService",
+    "ResearchSnapshot",
     "ServiceContainer",
     "build_services",
 ]

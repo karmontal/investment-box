@@ -199,29 +199,66 @@ def format_status(
     return f"{mode_tag(view.trading_mode)}\n{body}{_warning_block(view.warnings)}"
 
 
-def format_funds(
-    funds: Sequence[dict[str, Any]], mode: TradingMode, translator: Translator
-) -> str:
-    """The ``/funds`` reply.
+#: Icons mirroring the dashboard's candidate statuses, so the two views read
+#: the same way.
+_CANDIDATE_ICON = {
+    "actionable": "🟢",
+    "needs_approval": "🟡",
+    "watch": "⚪",
+    "blocked": "🔴",
+}
 
-    Phase 2 shows the configured universe and its verification state. Live
-    rankings arrive in Phase 4 -- until then this deliberately shows no scores
-    rather than placeholder ones that could be mistaken for signals.
+
+def format_funds(
+    funds: Sequence[dict[str, Any]],
+    mode: TradingMode,
+    translator: Translator,
+    *,
+    warnings: Sequence[str] = (),
+    regime: str | None = None,
+) -> str:
+    """The ``/funds`` reply, with live rankings when they are available.
+
+    Shows a probability only alongside its confidence. A bare percentage reads
+    as a promise; the pair reads as an estimate, which is what it is.
     """
 
     def build(t: Translator) -> str:
         lines = [f"<b>{esc(t.t('funds.title'))}</b>"]
+        if regime:
+            lines.append(f"<i>{esc(t.t('funds.regime'))}: {esc(regime)}</i>")
+        lines.append("")
+
         for fund in funds:
-            mark = "✅" if fund.get("verified") else "⚠️"
+            verified_mark = "✅" if fund.get("verified") else "⚠️"
+            status_mark = _CANDIDATE_ICON.get(str(fund.get("candidate_status") or ""), "")
+            rank = f"{fund['rank']}. " if fund.get("rank") else ""
             name = fund.get("name") or "—"
-            lines.append(f"{mark} <b>{esc(fund['symbol'])}</b> — {esc(name)}")
-            status = fund.get("compliance_status")
-            if status:
-                lines.append(f"    {esc(t.t('compliance.status'))}: {esc(status)}")
+            lines.append(
+                f"{status_mark}{verified_mark} {esc(rank)}<b>{esc(fund['symbol'])}</b> "
+                f"— {esc(name)}"
+            )
+
+            probability = fund.get("probability")
+            if probability is not None:
+                confidence = fund.get("confidence", "none")
+                lines.append(
+                    f"    {esc(t.t('funds.probability'))}: {pct(float(probability), places=0)} "
+                    f"({esc(t.t('funds.confidence'))}: {esc(confidence)})"
+                )
+            compliance = fund.get("compliance_status")
+            if compliance:
+                lines.append(f"    {esc(t.t('compliance.status'))}: {esc(compliance)}")
+            reason = fund.get("reason")
+            if reason:
+                lines.append(f"    <i>{esc(reason)}</i>")
+
         unverified = [f["symbol"] for f in funds if not f.get("verified")]
         if unverified:
             lines.append("")
             lines.append(esc(t.t("funds.unverified_note", count=len(unverified))))
+        for warning in warnings:
+            lines.append(f"⚠️ {esc(warning)}")
         return "\n".join(lines)
 
     return f"{mode_tag(mode)}\n{bilingual(translator, build)}"
