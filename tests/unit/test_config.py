@@ -193,14 +193,60 @@ class TestTelegramChannelValidation:
         assert self._secrets("not-an-id").telegram_channel_problem is not None
 
 
-class TestNoImportCycles:
-    """Every public package must import cleanly in isolation.
+def _all_modules() -> list[str]:
+    """Every importable module in the package.
 
-    A cycle between forecast -> shariah -> services -> forecast shipped
-    undetected because the test suite happened to import in a safe order. This
-    imports each package first in a fresh interpreter, which is the only way
-    to catch it.
+    Walking modules rather than listing packages: the Phase 4 version checked
+    only top-level packages and therefore missed
+    execution.order_manager -> engine -> execution.order_manager, which is the
+    same class of bug one level down.
     """
+    import pkgutil
+
+    import investment_box
+
+    names: list[str] = ["investment_box"]
+    for info in pkgutil.walk_packages(
+        investment_box.__path__, prefix="investment_box."
+    ):
+        # The Streamlit app executes on import (it calls main() at module
+        # scope), so importing it here would try to render a page.
+        if info.name.startswith("investment_box.ui.app"):
+            continue
+        if ".migrations" in info.name:
+            continue
+        names.append(info.name)
+    return names
+
+
+class TestNoImportCycles:
+    """Every module must import cleanly when imported FIRST.
+
+    A cycle only shows up when the wrong module is imported first, so the test
+    suite's own import order hides it. Two real cycles shipped this way:
+    forecast -> shariah -> services -> forecast, and
+    execution.order_manager -> engine -> execution.order_manager.
+    """
+
+    def test_every_module_imports_first(self) -> None:
+        import subprocess
+        import sys
+
+        failures: list[str] = []
+        for module in _all_modules():
+            result = subprocess.run(  # noqa: S603
+                [sys.executable, "-c", f"import {module}"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode != 0:
+                tail = result.stderr.strip().splitlines()[-1:] or ["<no stderr>"]
+                failures.append(f"{module}: {tail[0]}")
+
+        assert not failures, "modules that fail when imported first:\n" + "\n".join(
+            failures
+        )
 
     @pytest.mark.parametrize(
         "module",
@@ -209,9 +255,11 @@ class TestNoImportCycles:
             "investment_box.config",
             "investment_box.core",
             "investment_box.data",
+            "investment_box.engine",
             "investment_box.execution",
             "investment_box.features",
             "investment_box.forecast",
+            "investment_box.risk",
             "investment_box.services",
             "investment_box.shariah",
             "investment_box.strategies",

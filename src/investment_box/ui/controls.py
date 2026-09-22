@@ -22,14 +22,16 @@ from decimal import Decimal, InvalidOperation
 import streamlit as st
 
 from investment_box.core.types import AutonomyLevel, TradingMode, UniverseMode
+from investment_box.engine.live_guard import (
+    LIVE_CONFIRMATION_PHRASE,
+    ActivationResult,
+)
+from investment_box.engine.preflight import PreflightReport
 from investment_box.engine.runner import EngineRunner
 from investment_box.services.container import ServiceContainer
 from investment_box.services.settings_service import SettingsService, SymbolRule
 from investment_box.shariah.constraints import CONSTRAINTS
 from investment_box.ui import components as ui
-
-#: The exact phrase required to enable live trading.
-LIVE_CONFIRMATION_PHRASE = "ENABLE LIVE TRADING"
 
 AUTONOMY_LABELS = {
     AutonomyLevel.SUGGEST_ONLY: "1 — Suggest only (you approve every trade)",
@@ -301,26 +303,85 @@ def _trading_mode(services: ServiceContainer) -> None:
         return
 
     st.info("Currently **PAPER**. No real money is at risk.", icon="📄")
+
     with st.expander("Switch to live trading"):
-        st.warning(
-            "Live trading is not available. It requires the Phase 7 pre-flight "
-            "checklist — a minimum period of paper trading, paper results within "
-            "tolerance of the backtest, and compliance screening verified for every "
-            "held symbol. None of that exists yet.",
-            icon="🚫",
-        )
+        report = _preflight_report(services)
+
+        st.markdown(f"**{report.summary()}**")
+        for check in report.checks:
+            icon = {"pass": "✅", "fail": "❌", "unknown": "❓"}[check.status.value]
+            st.markdown(f"{icon} **{check.name}** — {check.detail}")
+            if check.remedy:
+                st.caption(f"→ {check.remedy}")
+
+        st.divider()
         typed = st.text_input(
-            f"To enable it later you will type: {LIVE_CONFIRMATION_PHRASE}",
+            f"Type exactly: {LIVE_CONFIRMATION_PHRASE}",
             placeholder=LIVE_CONFIRMATION_PHRASE,
+            help=(
+                "A typed phrase rather than a checkbox: a checkbox can be hit by "
+                "accident."
+            ),
         )
-        if st.button("Enable live trading", disabled=True):
-            st.error("Refused.")
-        if typed == LIVE_CONFIRMATION_PHRASE:
-            st.error(
-                "Phrase correct, but live trading is still refused: the pre-flight "
-                "checklist does not exist yet.",
-                icon="🚫",
+        if st.button("Enable live trading", disabled=not report.passed, type="primary"):
+            result = _attempt_activation(services, typed)
+            if result.activated:
+                st.success(result.reason)
+                st.warning(
+                    "Set IB__TRADING_MODE=live and ALPACA_BASE_URL to the live "
+                    "endpoint, then restart. The checklist is re-evaluated on every "
+                    "start and before every order.",
+                    icon="⚠️",
+                )
+            else:
+                st.error(result.reason)
+                for blocker in result.blockers:
+                    st.markdown(f"- {blocker}")
+
+        if not report.passed:
+            st.caption(
+                "The button stays disabled until every check passes. There is no "
+                "override — if a check is wrong, it gets fixed in source."
             )
+
+
+def _preflight_report(services: ServiceContainer) -> PreflightReport:
+    from investment_box.engine.preflight import PreflightChecklist
+
+    try:
+        held = [str(p.symbol) for p in services.broker.get_positions()]
+    except Exception:  # noqa: BLE001 - the checklist reports it itself
+        held = []
+
+    return PreflightChecklist(
+        services.settings, services.secrets, services.database, clock=services.clock
+    ).evaluate(
+        broker=services.broker,
+        data_provider_name=services.market_data.provider.name,
+        compliance_provider_name=services.settings.shariah.provider,
+        held_symbols=held,
+    )
+
+
+def _attempt_activation(services: ServiceContainer, typed: str) -> ActivationResult:
+    from investment_box.engine.live_guard import LiveActivation
+
+    try:
+        held = [str(p.symbol) for p in services.broker.get_positions()]
+    except Exception:  # noqa: BLE001
+        held = []
+
+    return LiveActivation(
+        services.settings, services.secrets, services.database, services.audit,
+        clock=services.clock,
+    ).attempt(
+        typed_phrase=typed,
+        actor="dashboard",
+        broker=services.broker,
+        data_provider_name=services.market_data.provider.name,
+        compliance_provider_name=services.settings.shariah.provider,
+        held_symbols=held,
+    )
 
 
 def _hard_constraints() -> None:

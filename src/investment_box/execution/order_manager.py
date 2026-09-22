@@ -31,6 +31,7 @@ from investment_box.config.schema import Settings
 from investment_box.core.audit import AuditSink
 from investment_box.core.clock import UTC, Clock, SystemClock
 from investment_box.core.errors import ComplianceError
+from investment_box.core.gates import OrderGate
 from investment_box.core.logging import get_logger
 from investment_box.core.types import (
     ComplianceStatus,
@@ -91,12 +92,16 @@ class OrderManager:
         audit: AuditSink,
         *,
         clock: Clock | None = None,
+        live_guard: OrderGate | None = None,
     ) -> None:
         self.broker = broker
         self.db = database
         self.settings = settings
         self.audit = audit
         self.clock = clock or SystemClock()
+        # Consulted before every LIVE order. None in paper mode, where there is
+        # nothing to guard.
+        self.live_guard = live_guard
 
     # ------------------------------------------------------------------ open
 
@@ -288,6 +293,18 @@ class OrderManager:
         on the key rejects a duplicate before the broker is ever called.
         """
         synthetic_stop = bool(request.is_fractional and size and size.stop_price)
+
+        # Re-check the critical live conditions. Passing at activation does not
+        # mean passing now: an account can switch to margin, a screen can go
+        # stale, a kill flag can be raised from another process.
+        if self.live_guard is not None:
+            try:
+                self.live_guard.assert_order_permitted(broker=self.broker)
+            except Exception as exc:  # noqa: BLE001 - refuse, do not propagate
+                log.error("order.live_guard_refused", error=str(exc))
+                return PlacedOrder(
+                    request=request, result=None, accepted=False, reason=str(exc)
+                )
 
         try:
             self._record(request, size, synthetic_stop)

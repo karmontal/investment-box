@@ -67,6 +67,12 @@ Run one engine cycle and see exactly what it would and would not do:
 uv run python scripts/run_engine.py --once
 ```
 
+See what stands between you and live trading:
+
+```bash
+uv run python scripts/preflight.py
+```
+
 Lint and type-check:
 
 ```bash
@@ -503,6 +509,67 @@ away the view you need to see why.
 - The image's default command is the health check, not the engine, so
   `docker run` cannot start trading by accident.
 
+## Going live
+
+Live trading is not a setting. It is a state you may only enter by producing
+evidence.
+
+```bash
+uv run python scripts/preflight.py
+```
+
+Twelve checks. **Every one must pass, and there is no override** — a checklist
+with a bypass is a suggestion. `LiveActivation.attempt()` has no `force`,
+`override` or `skip_checks` parameter, and a test asserts it never gains one.
+If a check is wrong, it gets fixed in source with a reason in the commit.
+
+### The checks
+
+| | |
+|---|---|
+| 8 weeks of paper trading | Not long enough to prove a strategy works — nothing is — but long enough to surface operational failures: a broker outage, a settlement surprise, a stop that did not fire |
+| 20 closed paper trades | Below this the paper record says nothing about whether execution behaves |
+| Paper within tolerance of backtest | A large gap means one of the two has a bug |
+| Market data is real | Not the synthetic generator |
+| Certified compliance source | A mock is not a ruling; the internal screener is an estimate with no business-activity data |
+| Every symbol verified | Listing and certification confirmed from the fund's own documents |
+| Held symbols freshly screened | Within 7 days, and compliant |
+| Cash account | Margin is never permitted |
+| No active kill switch | |
+| Alerting configured | Real money without alerts means finding out when you next happen to look |
+| Risk limits within bounds | These bound blast radius, not strategy |
+| Endpoint matches the mode | The last reversible step |
+
+### Evidence, not acknowledgement
+
+"Have you paper traded for eight weeks?" is a question you can lie to. "The
+database contains eight weeks of paper trades" is not. Every check reads state
+rather than asking.
+
+**A check that cannot be evaluated FAILS.** Missing evidence is not passing
+evidence — the same rule the compliance layer uses, for the same reason.
+
+### It is re-evaluated continuously
+
+Passing in January does not mean passing in March. The full checklist runs at
+activation and on every engine start; the **critical subset runs before every
+live order**, so an account that switched to margin, a screen that went stale,
+or a kill flag raised from another process stops the *next order*, not merely
+the next restart.
+
+That per-order check is deliberately not cached. A cached safety check is not a
+safety check.
+
+### Where you actually stand
+
+```
+5/12 checks pass. Live trading is refused until all of them do.
+```
+
+The seven blocking today: no paper history, no closed trades, no backtest
+comparison, an uncertified screening provider, eight unverified symbols, a
+margin-enabled broker account, and a paper endpoint.
+
 ## Avoiding look-ahead bias
 
 The single most common way a personal trading system produces a great backtest
@@ -564,6 +631,15 @@ and loses money live. The defences:
   falls back to a deterministic generator so it still runs. Anything computed
   from it is meaningless, and it says so at startup, in the container banner and
   in every fetch result.
+
+### Phase 7 specifically
+
+- **Live trading has never been exercised**, by design: the checklist has never
+  passed, so the live code paths are covered by tests and nothing else.
+- The paper-vs-backtest check needs you to pass the backtest return in; it
+  cannot yet find the right backtest window on its own.
+- Entering live mode still requires editing `.env` and restarting after the
+  dashboard accepts the phrase. That is deliberate friction, not an oversight.
 
 ### Phase 6 specifically
 

@@ -19,7 +19,9 @@ from investment_box.core.clock import UTC, TradingCalendar
 from investment_box.core.logging import get_logger
 from investment_box.core.types import AutonomyLevel, TradingMode
 from investment_box.engine.kill_switch import KillResult, KillSwitch
+from investment_box.engine.live_guard import LiveGuard
 from investment_box.engine.loop import CycleResult, TradingCycle
+from investment_box.engine.preflight import PreflightChecklist
 from investment_box.engine.scheduler import EngineScheduler
 from investment_box.engine.state import EngineState, EngineStateMachine
 from investment_box.execution.order_manager import OrderManager
@@ -182,8 +184,16 @@ def build_engine(
         settings, services.database, ledger, services.audit,
         clock=services.clock, calendar=calendar,
     )
+    live_guard = LiveGuard(
+        settings, services.secrets, services.database, services.audit, clock=services.clock
+    )
     orders = OrderManager(
-        services.broker, services.database, settings, services.audit, clock=services.clock
+        services.broker,
+        services.database,
+        settings,
+        services.audit,
+        clock=services.clock,
+        live_guard=live_guard,
     )
     compliance = ComplianceTracker(
         MockExternalProvider(clock=services.clock),
@@ -213,10 +223,21 @@ def build_engine(
         )
 
     if settings.trading_mode is TradingMode.LIVE:
-        blockers.append(
-            "LIVE mode requires the Phase 7 pre-flight checklist, which is not "
-            "implemented. Refusing to trade real money."
+        # Live mode is permitted only while the full checklist passes. It is
+        # re-evaluated on every start, not trusted from a stored flag.
+        report = PreflightChecklist(
+            settings, services.secrets, services.database, clock=services.clock
+        ).evaluate(
+            broker=services.broker,
+            data_provider_name=services.market_data.provider.name,
+            compliance_provider_name=settings.shariah.provider,
+            held_symbols=[str(p.symbol) for p in services.broker.get_positions()],
         )
+        if not report.passed:
+            blockers.append(
+                f"LIVE mode, but {len(report.failures)} pre-flight check(s) fail: "
+                + "; ".join(c.name for c in report.failures)
+            )
 
     account = None
     try:
