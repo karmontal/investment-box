@@ -1,0 +1,208 @@
+# Investment Box
+
+A personal, semi-autonomous short-term investing application for Shariah-compliant
+US ETFs. It scans a compliant universe, generates trade candidates with
+probabilistic forecasts, asks for approval according to a configurable autonomy
+level, and trades within hard risk and compliance limits.
+
+**Paper trading is the default and the only mode reachable without an explicit
+opt-in.** Live trading requires a config flag, a matching broker endpoint, and a
+typed confirmation in the dashboard.
+
+> This is personal software for managing your own account. It is not investment
+> advice, and nothing in it is a recommendation. Backtested results are not
+> predictions.
+
+---
+
+## Status
+
+| Phase | Scope | State |
+|---|---|---|
+| 1 | Skeleton, config, data layer, service layer, tests | **Complete** |
+| 2 | Telegram broadcast + control bot + approval framework | Not started |
+| 3 | Shariah module, universe, features, strategies, backtester | Not started |
+| 4 | Forecasts, candidate ranking, Streamlit dashboard | Not started |
+| 5 | Risk manager, paper execution, scheduler | Not started |
+| 6 | User controls, purification/zakat, audit log, Docker | Not started |
+| 7 | Live mode behind a pre-flight checklist | Not started |
+
+---
+
+## Quick start
+
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv sync
+cp .env.example .env
+uv run python scripts/health_check.py
+```
+
+`health_check.py` runs with no credentials: it falls back to the in-memory mock
+broker and, if yfinance cannot reach the network, to synthetic price data. It
+prints loudly when either fallback is active.
+
+Run the tests:
+
+```bash
+uv run pytest
+```
+
+Lint and type-check:
+
+```bash
+uv run ruff check . && uv run mypy src
+```
+
+---
+
+## Configuration
+
+Three layers, lowest precedence first:
+
+1. `config/default.yaml` — committed defaults
+2. `config/local.yaml` — your overrides, gitignored
+3. environment variables — `IB__` prefix, `__` for nesting
+
+```bash
+# these are equivalent
+# config/local.yaml:  risk: { max_open_positions: 3 }
+IB__RISK__MAX_OPEN_POSITIONS=3
+```
+
+Secrets are read only from the environment or `.env`, never from YAML, and are
+wrapped in `SecretStr` so a stray `repr` prints `**********`. The logging
+pipeline additionally redacts anything matching a key/token pattern, so a
+credential that leaks into an exception message still does not reach a log file.
+
+See `.env.example` for every supported variable.
+
+### Current settings
+
+| Setting | Value | Where |
+|---|---|---|
+| Allocated capital | $500 | `capital.allocation_usd` |
+| Risk per trade | 1.5% | `risk.risk_per_trade_pct` |
+| Max position | 20% of allocation | `risk.max_position_pct` |
+| Max open positions | 5 | `risk.max_open_positions` |
+| Daily loss halt | 3% | `risk.max_daily_loss_pct` |
+| Drawdown auto-pause | 15% | `risk.max_drawdown_pct` |
+| Min holding period | 2 trading days | `holding.min_holding_days` |
+| Settlement | T+1, unsettled cash blocked | `settlement.*` |
+| Execution | hybrid (whole-share first) | `execution.mode` |
+| Universe | Mode A, certified ETFs only | `universe.mode` |
+| Language | English + Arabic | `i18n.language` |
+| Display timezone | Asia/Jerusalem | `i18n.display_timezone` |
+
+---
+
+## Architecture
+
+```
+config/          layered YAML + pydantic-settings, secrets separate
+core/            types, UTC clock, NYSE calendar + T+1 arithmetic, logging
+db/              SQLAlchemy models, WAL-mode SQLite, alembic migrations
+data/            providers (yfinance / Alpaca / synthetic), parquet cache,
+                 cleaning, and the repository that owns the look-ahead guard
+shariah/         constraints.py (hard, unconfigurable) + screening (Phase 3)
+execution/       Broker protocol + mock broker; Alpaca adapter in Phase 5
+services/        the ONLY read/write path to state -- used by UI and Telegram alike
+i18n/            EN/AR catalogues with English fallback
+```
+
+Two structural rules hold everywhere:
+
+**The service layer is the only path to state.** The dashboard and the Telegram
+bot both call `services/`; neither touches the broker or the database. This is
+what keeps `/balance` and the dashboard from ever disagreeing.
+
+**Shariah hard constraints are code, not config.** No margin, no shorting, no
+options/futures/CFDs, no leveraged or inverse funds, no crypto derivatives.
+These live as frozen constants in `shariah/constraints.py` with no config key and
+no UI control, and `assert_order_permissible()` is called on every order before
+submission. Disabling one requires editing source.
+
+The `Broker` protocol reinforces this: it has no `short`, no `buy_to_cover` and
+no margin parameter. A capability absent from the interface cannot be reached by
+a bug.
+
+---
+
+## Avoiding look-ahead bias
+
+The single most common way a personal trading system produces a great backtest
+and loses money live. The defences:
+
+- `MarketDataRepository.get_bars(..., as_of=date)` removes every bar at or after
+  `as_of`, whatever the cache holds. Backtests always pass it.
+- `data.clean.assert_no_lookahead()` raises — not warns — if a strategy is
+  handed a bar it should not see.
+- Signals are computed from a completed bar and executed on the **next** bar's
+  open, never the signal bar's close.
+- Cleaning never forward-fills a price. A filled close is a fake zero return,
+  which reads as "calm" to a volatility estimate and flatters every result.
+- Split/dividend adjustment is a provider responsibility, and cleaning flags
+  moves that look like unadjusted splits rather than trusting the feed.
+- Days are NYSE trading days everywhere, never calendar days.
+
+---
+
+## Known limitations and risks
+
+**These apply to the project as a whole, not just Phase 1.**
+
+- **T+1 settlement is the binding constraint at this account size.** With ~$500
+  in a cash account and a 2-trading-day minimum hold, each dollar realistically
+  cycles two or three times a month. Expect few trades. This is correct
+  behaviour, not a bug, and the risk manager will block a lot.
+- **Position granularity is coarse.** 1.5% risk on $500 is about $7.50 per
+  trade; with an 8% stop that is roughly a $94 position — under two shares of a
+  $50 ETF. Positions will frequently round to one share or fall through to the
+  fractional path.
+- **Fractional positions have no broker-side stop.** Alpaca fractional orders
+  must be market orders and cannot carry bracket legs, so the engine manages
+  those stops itself. If the engine or its host is down, those positions are
+  unprotected. The fallback is off until
+  `execution.acknowledge_fractional_stop_risk` is set to true.
+- **Fixed frictions dominate at this size.** Spread and slippage on a $100
+  position are a far larger share of expected edge than on a $10,000 one.
+  Backtest reports will show cost as a percentage of gross P&L prominently.
+- **Historical Shariah compliance data does not exist for most of this
+  universe.** Several of these ETFs launched in 2023 or later, so any backtest
+  before roughly 2019 has almost no compliant universe to trade. Using today's
+  compliance list historically is look-ahead bias, and every report says so.
+- **The seed ETF list is unverified.** Every entry in `config/universe_etf.yaml`
+  is `verified: false` until a human confirms listing, certification and the
+  certifying board from the fund's own documents. The engine refuses to trade an
+  unverified symbol. `MNZL` in particular is unconfirmed.
+- **yfinance is research-only.** No SLA, undocumented endpoint, occasionally
+  silently wrong. Fine for building strategies; execution prices come from the
+  broker.
+- **Synthetic data is not data.** When no real provider is reachable the app
+  falls back to a deterministic generator so it still runs. Anything computed
+  from it is meaningless, and it says so at startup, in the container banner and
+  in every fetch result.
+
+### Phase 1 specifically
+
+- The Alpaca broker adapter is **not wired**. Even with valid credentials,
+  `build_services()` returns the mock broker — connecting a half-built engine to
+  a real account is how accidents happen. It is wired in Phase 5.
+- The Alpaca *data* provider is written but exercised only against recorded
+  shapes; it is validated against the live API in Phase 5.
+- `db.create_all()` creates missing tables. Schema *changes* need alembic, whose
+  baseline is generated in Phase 2.
+- Nothing trades. There is no engine loop, no risk manager and no strategy yet.
+
+---
+
+## Development
+
+```bash
+uv sync                       # install
+uv run pytest                 # tests
+uv run pytest -m "not network"  # skip anything needing the network (the default)
+uv run ruff check . --fix     # lint
+uv run mypy src               # type-check
+```

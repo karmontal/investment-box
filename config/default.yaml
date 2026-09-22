@@ -1,0 +1,106 @@
+# =============================================================================
+# Investment Box -- committed defaults.
+# Override locally in config/local.yaml (gitignored) or via IB__* env vars.
+# Precedence: default.yaml  <  config/local.yaml  <  environment variables
+#
+# NOTE: The Shariah *hard* constraints (no margin, no shorting, no options /
+# futures / CFDs, no leveraged or inverse ETFs, no crypto derivatives) are NOT
+# in this file. They live as frozen constants in
+# src/investment_box/shariah/constraints.py and are asserted on every order.
+# They cannot be changed from config or from the UI by design.
+# =============================================================================
+
+trading_mode: paper          # paper | live  (live also needs a typed UI confirmation)
+log_level: INFO
+data_dir: ./data
+
+capital:
+  # The bot may never deploy more than this, regardless of account equity.
+  allocation_usd: 500.0
+  # Fraction of allocation always held back as cash.
+  cash_buffer_pct: 0.10
+
+risk:
+  # --- "Moderate" preset -----------------------------------------------------
+  risk_per_trade_pct: 0.015        # fraction of allocated capital risked per trade
+  max_position_pct: 0.20           # max fraction of allocation in one position
+  max_open_positions: 5
+  max_daily_loss_pct: 0.03         # breach -> halt new entries for the day
+  max_drawdown_pct: 0.15           # breach -> auto-pause the engine entirely
+  max_sector_exposure_pct: 0.50
+  default_stop_loss_atr_mult: 2.0
+  default_take_profit_atr_mult: 3.0
+  sizing_method: atr               # atr | fixed_fractional
+  max_trades_per_day: 2
+  max_trades_per_week: 5
+
+holding:
+  min_holding_days: 2              # trading days; enforced, never bypassed
+  typical_max_holding_days: 10
+
+settlement:
+  # US equities settle T+1. Cash accounts may not trade with unsettled proceeds.
+  settlement_days: 1
+  block_unsettled_usage: true      # prevents good-faith violations
+
+execution:
+  # "Hybrid" mode: prefer whole shares with limit + bracket orders; fall back to
+  # a fractional market order with an ENGINE-MANAGED stop only when the sized
+  # position cannot afford one whole share.
+  mode: hybrid                     # hybrid | whole_share_only | fractional_always
+  allow_fractional_fallback: true
+  default_order_type: limit
+  limit_offset_pct: 0.001          # marketable-limit offset from last price
+  order_timeout_minutes: 30        # unfilled limit orders are cancelled
+  # Fractional positions get no broker-side stop. If the engine is down they
+  # are unprotected. Set false to refuse fractional entries entirely.
+  acknowledge_fractional_stop_risk: false
+
+universe:
+  mode: A                          # A = certified ETFs only | B = ETFs + screened stocks
+  min_price: 5.0
+  max_price: 10000.0
+  min_avg_dollar_volume: 250000.0  # 20-day average
+  max_spread_pct: 0.005
+  whitelist: []
+  blacklist: []
+
+shariah:
+  provider: internal_aaoifi        # internal_aaoifi | mock_external | zoya | musaffa
+  non_permissible_revenue_max_pct: 0.05
+  debt_to_market_cap_max_pct: 0.30
+  interest_securities_to_market_cap_max_pct: 0.30
+  ratio_denominator: market_cap    # market_cap | total_assets  (recorded in every screen)
+  rescreen_interval_days: 7
+  # Days allowed to exit a holding that turns NON_COMPLIANT.
+  non_compliant_exit_days: 3
+  # UNKNOWN and DOUBTFUL are never auto-traded. Not configurable on purpose.
+  idle_cash_park_symbol: SPSK      # null disables parking of idle cash
+
+costs:
+  # Applied to every backtest. Alpaca equity commission is 0, but spread and
+  # slippage are not -- and at ~$100 positions they dominate.
+  commission_per_share: 0.0
+  commission_min: 0.0
+  slippage_bps: 5.0                # 0.05% of notional
+  spread_bps: 4.0                  # half-spread paid on entry and on exit
+  sec_fee_bps: 0.278               # sells only
+  finra_taf_per_share: 0.000166    # sells only
+
+data:
+  provider: yfinance               # yfinance | alpaca
+  cache_dir: ./data/cache
+  cache_ttl_hours: 12
+  history_start: "2015-01-01"
+  bar_timeframe: 1d
+
+engine:
+  autonomy_level: 1                # 1 = suggest only | 2 = auto within whitelist | 3 = autonomous
+  market_timezone: America/New_York
+  # Signals are generated after the close and executed on the NEXT bar's open.
+  signal_time: "16:15"
+  enabled: false                   # Phase 5 turns this on
+
+i18n:
+  language: both                   # en | ar | both
+  display_timezone: Asia/Jerusalem

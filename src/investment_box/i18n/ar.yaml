@@ -1,0 +1,61 @@
+# Arabic message catalogue. Any key missing here falls back to en.yaml.
+common:
+  paper: تجريبي
+  live: حقيقي
+  yes: "نعم"
+  no: "لا"
+  unknown: غير معروف
+  none: لا شيء
+
+status:
+  title: حالة المحرك
+  running: يعمل
+  paused: متوقف مؤقتاً
+  stopped: متوقف
+  mode: الوضع
+  autonomy: مستوى الاستقلالية
+  broker: الوسيط
+  data_provider: مصدر البيانات
+
+balance:
+  title: الرصيد
+  equity: إجمالي الحساب
+  cash_settled: نقد مسوّى
+  cash_unsettled: نقد غير مسوّى
+  allocated: المخصص للبوت
+  deployed: المستثمر
+  available: المتاح للتداول
+  day_pnl: ربح/خسارة اليوم
+  all_time_pnl: الربح/الخسارة الإجمالية
+
+positions:
+  title: المراكز المفتوحة
+  none: لا توجد مراكز مفتوحة.
+  symbol: الرمز
+  quantity: الكمية
+  entry: سعر الدخول
+  current: السعر الحالي
+  pnl: الربح/الخسارة
+  days_held: أيام الاحتفاظ
+  stop: وقف الخسارة
+  target: الهدف
+  synthetic_stop: وقف يديره المحرك
+
+compliance:
+  status: حالة المطابقة الشرعية
+  compliant: مطابق
+  non_compliant: غير مطابق
+  doubtful: مشبوه
+  unknown: غير معروف
+  screened_at: تاريخ الفحص
+  source: المصدر
+
+warnings:
+  synthetic_data: >-
+    بيانات السوق اصطناعية. هذه الأرقام مولّدة ولا تعني شيئاً.
+  mock_broker: >-
+    التشغيل يتم عبر وسيط وهمي. الأرصدة والتنفيذات محاكاة.
+  unprotected_stop: >-
+    وقف الخسارة لهذا المركز يديره المحرك وليس الوسيط. إذا توقف المحرك فالمركز غير محمي.
+  live_mode: >-
+    تداول حقيقي. أموال حقيقية معرّضة للمخاطر.

@@ -1,0 +1,91 @@
+[project]
+name = "investment-box"
+version = "0.1.0"
+description = "Personal semi-autonomous short-term investing application for Shariah-compliant US ETFs"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pyyaml>=6.0",
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "pyarrow>=18.0",
+    "yfinance>=0.2.50",
+    "pandas-market-calendars>=4.4",
+    "structlog>=24.4",
+    "python-dotenv>=1.0",
+    "tenacity>=9.0",
+]
+
+[project.optional-dependencies]
+broker = [
+    "alpaca-py>=0.33",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "freezegun>=1.5",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "types-pyyaml>=6.0",
+    "pandas-stubs>=2.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/investment_box"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "B",         # bugbear
+    "UP",        # pyupgrade
+    "N",         # pep8-naming
+    "ANN",       # annotations
+    "S",         # bandit
+    "DTZ",       # naive-datetime detection -- important for this project
+    "RUF",
+]
+ignore = [
+    "ANN401",  # Any is occasionally unavoidable at provider boundaries
+    "S101",    # assert is used deliberately for the Shariah hard-constraint guards
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "S105", "S106"]
+"scripts/**" = ["S603", "S607"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["investment_box"]
+mypy_path = "src"
+strict = true
+warn_unreachable = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["yfinance.*", "pandas_market_calendars.*", "alpaca.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "network: test requires live network access (deselected by default)",
+]
+filterwarnings = ["ignore::DeprecationWarning:yfinance.*"]

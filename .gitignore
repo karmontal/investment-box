@@ -1,0 +1,34 @@
+# Secrets -- never commit
+.env
+.env.*
+!.env.example
+config/local.yaml
+
+# Data & state
+data/
+*.db
+*.db-journal
+*.sqlite3
+logs/
+reports/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

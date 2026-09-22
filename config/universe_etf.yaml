@@ -1,0 +1,110 @@
+# =============================================================================
+# Seed universe -- Shariah-certified US-listed ETFs (Universe Mode A).
+#
+# !! VERIFICATION REQUIRED !!
+# Every entry below is marked `verified: false`. Nothing here is treated as
+# certified until a human confirms, from the fund's own prospectus / factsheet:
+#   1. the fund is still listed and trading,
+#   2. it is currently Shariah-certified,
+#   3. the name of the certifying Shariah board / advisor,
+#   4. it is neither leveraged nor inverse.
+# Phase 3 adds `scripts/verify_universe.py`, which checks listing + liquidity
+# automatically and prints a checklist for the parts only you can confirm.
+# The engine REFUSES to trade any symbol whose `verified` flag is false.
+# `inception` is used to prevent look-ahead: a fund is excluded from any
+# backtest window that starts before its inception date.
+# =============================================================================
+
+etfs:
+  - symbol: SPUS
+    name: SP Funds S&P 500 Sharia Industry Exclusions ETF
+    issuer: SP Funds
+    asset_class: equity_us
+    certifying_board: null        # fill from prospectus
+    inception: null               # fill: YYYY-MM-DD
+    verified: false
+    notes: Primary large-cap US equity sleeve.
+
+  - symbol: HLAL
+    name: Wahed FTSE USA Shariah ETF
+    issuer: Wahed Invest
+    asset_class: equity_us
+    certifying_board: null
+    inception: null
+    verified: false
+    notes: Alternative US equity sleeve; overlaps SPUS substantially.
+
+  - symbol: SPSK
+    name: SP Funds Dow Jones Global Sukuk ETF
+    issuer: SP Funds
+    asset_class: sukuk
+    certifying_board: null
+    inception: null
+    verified: false
+    notes: >-
+      Defensive sleeve and the idle-cash parking symbol. Sukuk are
+      asset-backed, not interest-bearing, but confirm the specific fund's
+      structure before relying on it for that purpose.
+
+  - symbol: SPRE
+    name: SP Funds S&P Global REIT Sharia ETF
+    issuer: SP Funds
+    asset_class: reit
+    certifying_board: null
+    inception: null
+    verified: false
+    notes: Young fund -- short history limits backtest coverage.
+
+  - symbol: SPTE
+    name: SP Funds S&P Global Technology ETF
+    issuer: SP Funds
+    asset_class: equity_sector
+    certifying_board: null
+    inception: null
+    verified: false
+    notes: Young fund -- short history limits backtest coverage.
+
+  - symbol: SPWO
+    name: SP Funds S&P World (ex-US) ETF
+    issuer: SP Funds
+    asset_class: equity_intl
+    certifying_board: null
+    inception: null
+    verified: false
+    notes: Young fund -- short history limits backtest coverage.
+
+  - symbol: UMMA
+    name: Wahed Dow Jones Islamic World ex-US ETF
+    issuer: Wahed Invest
+    asset_class: equity_intl
+    certifying_board: null
+    inception: null
+    verified: false
+    notes: Check average dollar volume -- historically thin.
+
+  - symbol: MNZL
+    name: null                    # UNCONFIRMED -- confirm the issuer and full name
+    issuer: null
+    asset_class: unknown
+    certifying_board: null
+    inception: null
+    verified: false
+    notes: >-
+      Listed in the build spec but not confirmed here. Confirm this ticker
+      exists, is US-listed and is Shariah-certified before enabling it, or
+      remove it from this file.
+
+# Benchmarks. Fetched for comparison and regime detection only -- NEVER traded.
+benchmarks:
+  - symbol: SPY
+    name: SPDR S&P 500 ETF Trust
+    role: broad_market_benchmark
+  - symbol: SPUS
+    role: shariah_benchmark
+
+# Regime-filter inputs. Data only, never traded.
+regime_inputs:
+  - symbol: SPY
+    role: trend
+  - symbol: ^VIX
+    role: volatility

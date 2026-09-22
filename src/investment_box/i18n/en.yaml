@@ -1,0 +1,63 @@
+# English message catalogue. Keys are shared with ar.yaml; a key present here
+# and missing there falls back to English rather than rendering blank.
+common:
+  paper: PAPER
+  live: LIVE
+  yes: "Yes"
+  no: "No"
+  unknown: Unknown
+  none: None
+
+status:
+  title: Engine status
+  running: Running
+  paused: Paused
+  stopped: Stopped
+  mode: Mode
+  autonomy: Autonomy level
+  broker: Broker
+  data_provider: Data provider
+
+balance:
+  title: Balance
+  equity: Equity
+  cash_settled: Settled cash
+  cash_unsettled: Unsettled cash
+  allocated: Allocated to bot
+  deployed: Deployed
+  available: Available to trade
+  day_pnl: P&L today
+  all_time_pnl: P&L all time
+
+positions:
+  title: Open positions
+  none: No open positions.
+  symbol: Symbol
+  quantity: Quantity
+  entry: Entry
+  current: Current
+  pnl: P&L
+  days_held: Days held
+  stop: Stop
+  target: Target
+  synthetic_stop: engine-managed stop
+
+compliance:
+  status: Compliance status
+  compliant: Compliant
+  non_compliant: Not compliant
+  doubtful: Doubtful
+  unknown: Unknown
+  screened_at: Screened
+  source: Source
+
+warnings:
+  synthetic_data: >-
+    Market data is synthetic. These numbers are generated and mean nothing.
+  mock_broker: >-
+    Running against the mock broker. Balances and fills are simulated.
+  unprotected_stop: >-
+    This position's stop is managed by the engine, not the broker. If the
+    engine stops, the position is unprotected.
+  live_mode: >-
+    LIVE TRADING. Real money is at risk.
