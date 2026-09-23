@@ -614,6 +614,33 @@ Docker comes up before `tailscaled` after a reboot the bind fails. `restart:
 unless-stopped` retries until the interface exists, so it heals itself — but
 that is why the dashboard can take a minute to appear after a host reboot.
 
+**Running commands inside the container.** There is no `uv` in the runtime
+image — it exists only in the build stage, and the virtualenv is already on
+`PATH`. Inside the container the command is plain `python`:
+
+```bash
+docker compose exec -T engine python scripts/run_backtest.py --save-track-record
+docker compose exec -T engine python scripts/preflight.py
+docker compose exec -T engine python scripts/verify_universe.py
+```
+
+`uv run python ...` is for a checkout on your own machine, where uv manages the
+environment. Inside the container it is `uv: command not found`.
+
+**Rebuild after a pull, do not just restart.** `config/` is a live bind mount
+while the code lives in the image, so the two can drift apart. Pull a change
+that adds a config key, `docker compose restart`, and the new YAML meets the
+old schema: `Extra inputs are not permitted`, and the engine crash-loops on a
+key that is perfectly valid in the repository. Always:
+
+```bash
+git pull && docker compose up -d --build
+```
+
+A bare `docker compose restart engine` is correct only when you edited
+`config/` and nothing else. The loader detects this specific failure and says
+so in the error, but the habit is cheaper than the diagnosis.
+
 **What survives what.** Trade history, the audit log and the cache live on the
 `investment-data` named volume, not in the image, so `docker compose up -d
 --build` after a `git pull` keeps them. `docker compose down` keeps the volume;

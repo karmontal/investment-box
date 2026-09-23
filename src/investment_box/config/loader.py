@@ -108,7 +108,26 @@ def load_settings(
         # values passed here, so IB__* always wins over both YAML layers.
         return Settings(_env_file=DEFAULT_ENV_FILE, **merged)  # type: ignore[call-arg]
     except Exception as exc:  # pragma: no cover - re-raised with context
-        raise ConfigError(f"Invalid configuration: {exc}") from exc
+        raise ConfigError(f"Invalid configuration: {exc}{_unknown_key_hint(exc)}") from exc
+
+
+def _unknown_key_hint(exc: Exception) -> str:
+    """Explain the one config failure that looks like a bug and is not.
+
+    In the container ``config/`` is a live bind mount while the code lives in
+    the image. Pull a change that adds a config key, restart without
+    rebuilding, and the new YAML meets the old schema: `extra_forbidden`, and
+    the engine crash-loops on a key that is perfectly valid in the repository.
+    The message alone sends you looking for a typo you did not make.
+    """
+    if "extra_forbidden" not in str(exc) and "Extra inputs are not permitted" not in str(exc):
+        return ""
+    return (
+        "\n\nThis key is unknown to THIS BUILD of the application. If you just "
+        "pulled config changes into a container, the image still holds the old "
+        "code while config/ is mounted live -- rebuild rather than restart:\n"
+        "    docker compose up -d --build"
+    )
 
 
 @lru_cache(maxsize=1)
