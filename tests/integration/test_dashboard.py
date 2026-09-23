@@ -226,3 +226,49 @@ class TestEngineStatusIsReal:
         state.get_engine_status.clear()
         status, _ = state.get_engine_status()
         assert status == "running", "only engine.* transitions describe the engine"
+
+
+class TestBuildStamp:
+    """A page must be able to say which build it came from.
+
+    Added after an hour spent distinguishing "the deployment is broken" from
+    "your browser is showing a page rendered before the rebuild". Every
+    server-side check passed; nothing on screen said how old the screen was.
+    """
+
+    def test_it_reports_the_commit_when_the_image_was_stamped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import importlib
+
+        monkeypatch.setenv("IB_BUILD_COMMIT", "92c0661")
+        from investment_box.ui import state
+
+        importlib.reload(state)
+        try:
+            assert "92c0661" in state.build_stamp("Asia/Jerusalem")
+        finally:
+            monkeypatch.delenv("IB_BUILD_COMMIT", raising=False)
+            importlib.reload(state)
+
+    def test_an_unstamped_build_says_so_rather_than_lying(self) -> None:
+        from investment_box.ui import state
+
+        stamp = state.build_stamp("Asia/Jerusalem")
+        assert "unstamped" in stamp or "serving since" in stamp
+
+    def test_it_always_carries_the_process_start_time(self) -> None:
+        """The part that actually answers 'is this page stale?'"""
+        from investment_box.ui import state
+
+        stamp = state.build_stamp("Asia/Jerusalem")
+        assert "serving since" in stamp
+        assert str(state.PROCESS_STARTED_AT.year) in stamp
+
+    def test_the_start_time_is_the_process_not_the_request(self) -> None:
+        """It must not move on every rerun, or it can never look stale."""
+        from investment_box.ui import state
+
+        first = state.PROCESS_STARTED_AT
+        _ = state.build_stamp("Asia/Jerusalem")
+        assert state.PROCESS_STARTED_AT is first

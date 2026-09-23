@@ -8,7 +8,13 @@
 
 services:
   engine:
-    build: .
+    build:
+      context: .
+      args:
+        # Stamps the image so the dashboard can show which build it is running.
+        # Optional: export GIT_COMMIT=$(git rev-parse --short HEAD) before
+        # building, or leave it and the sidebar says "unknown".
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     image: investment-box:latest
     container_name: investment-box-engine
     command: ["python", "scripts/run_engine.py"]
@@ -42,7 +48,10 @@ services:
       options: {max-size: "10m", max-file: "5"}
 
   dashboard:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     image: investment-box:latest
     container_name: investment-box-dashboard
     command:

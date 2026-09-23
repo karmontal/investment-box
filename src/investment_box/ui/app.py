@@ -26,6 +26,7 @@ from investment_box.strategies import STRATEGY_REGISTRY
 from investment_box.ui import components as ui
 from investment_box.ui.controls import render_controls
 from investment_box.ui.state import (
+    build_stamp,
     clear_caches,
     get_engine_status,
     get_research,
@@ -75,6 +76,13 @@ def main() -> None:
             st.caption(f"last reported {local:%H:%M %Z}")
         elif engine_state == "unknown":
             st.caption("no engine has started against this database")
+
+        st.divider()
+        st.caption(build_stamp(settings.i18n.display_timezone))
+        st.caption(
+            "If that time predates your last rebuild, this page is a stale "
+            "browser session -- close the tab and reopen it."
+        )
 
         strategy_name = st.selectbox(
             "Strategy", list(STRATEGY_REGISTRY), index=0,

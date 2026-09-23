@@ -15,6 +15,7 @@ matters here:
 from __future__ import annotations
 
 import datetime as dt
+import os
 from dataclasses import dataclass
 
 import streamlit as st
@@ -198,3 +199,25 @@ def get_engine_status() -> tuple[str, dt.datetime | None]:
         if row is None:
             return ("unknown", None)
         return (row.event_type.split(".", 1)[1], row.created_at)
+
+#: When THIS process started. The signal that matters after a rebuild: a page
+#: served by a process older than your last `docker compose up -d --build` is
+#: a stale browser session, not a broken deployment. Distinguishing those two
+#: by inspection cost an hour once.
+PROCESS_STARTED_AT = dt.datetime.now(dt.UTC)
+
+#: Commit the image was built from, stamped in by the Dockerfile's GIT_COMMIT
+#: build arg. "unknown" when nobody passed one, which is fine -- the start time
+#: alone answers the staleness question.
+BUILD_COMMIT = os.environ.get("IB_BUILD_COMMIT", "unknown").strip() or "unknown"
+
+
+def build_stamp(tz_name: str) -> str:
+    """One line identifying exactly what is being served."""
+    from zoneinfo import ZoneInfo
+
+    from investment_box.core.clock import to_display
+
+    started = to_display(PROCESS_STARTED_AT, ZoneInfo(tz_name))
+    commit = BUILD_COMMIT if BUILD_COMMIT != "unknown" else "unstamped"
+    return f"build {commit} · serving since {started:%Y-%m-%d %H:%M %Z}"

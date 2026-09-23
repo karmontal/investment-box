@@ -627,6 +627,26 @@ docker compose exec -T engine python scripts/verify_universe.py
 `uv run python ...` is for a checkout on your own machine, where uv manages the
 environment. Inside the container it is `uv: command not found`.
 
+**Telling a stale page from a broken one.** The sidebar shows which build it
+is serving and when that process started:
+
+```
+build 92c0661 · serving since 2026-09-23 15:21 IDT
+```
+
+If that time predates your last `docker compose up -d --build`, the page is a
+browser session rendered before the rebuild — close the tab and reopen it.
+Streamlit reconnects a dropped websocket to the old render, so a container
+restart leaves the screen showing the previous deployment while every
+server-side check passes. The commit is stamped in with an optional build arg:
+
+```bash
+GIT_COMMIT=$(git rev-parse --short HEAD) docker compose up -d --build
+```
+
+Leave it out and the stamp reads `unstamped`, which costs nothing — the start
+time alone answers the staleness question.
+
 **Rebuild after a pull, do not just restart.** `config/` is a live bind mount
 while the code lives in the image, so the two can drift apart. Pull a change
 that adds a config key, `docker compose restart`, and the new YAML meets the

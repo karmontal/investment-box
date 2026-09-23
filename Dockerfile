@@ -38,10 +38,16 @@ COPY --chown=investment:investment config/ ./config/
 COPY --chown=investment:investment scripts/ ./scripts/
 COPY --chown=investment:investment alembic.ini ./
 
+# Optional build stamp, shown in the dashboard sidebar so a stale page is
+# visible at a glance. .git is excluded from the build context, so the commit
+# has to be passed in; it defaults to "unknown" and nothing depends on it.
+ARG GIT_COMMIT=unknown
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1 \
-    IB__DATA_DIR=/data
+    IB__DATA_DIR=/data \
+    IB_BUILD_COMMIT=$GIT_COMMIT
 
 # The database, the parquet cache and the logs live on a volume, so a rebuild
 # never destroys trade history.
