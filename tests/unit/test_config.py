@@ -475,3 +475,41 @@ class TestEverySourceFileIsInTheRepository:
             and (pkg.relative_to(root) / "__init__.py").as_posix() not in tracked
         ]
         assert not missing, f"untracked package initialisers: {sorted(missing)}"
+
+
+class TestUniverseEditsAreSeenWithoutARestart:
+    """`config/` is a live bind mount so the list can be edited in place.
+
+    It was cached with no key, so marking a fund `verified: true` changed
+    nothing on screen until the container restarted -- indistinguishable from
+    the edit not having worked.
+    """
+
+    def test_the_fingerprint_changes_when_the_file_changes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from investment_box.config import loader
+
+        target = tmp_path / "universe_etf.yaml"
+        target.write_text("etfs:\n  - symbol: SPUS\n    verified: false\n")
+        monkeypatch.setattr(loader, "config_dir", lambda: tmp_path)
+
+        from investment_box.ui.state import _universe_fingerprint
+
+        before = _universe_fingerprint()
+        target.write_text("etfs:\n  - symbol: SPUS\n    verified: true\n    name: x\n")
+        after = _universe_fingerprint()
+
+        assert before != after, (
+            "editing the universe file must change its fingerprint, or the dashboard "
+            "keeps serving the version it read at startup"
+        )
+
+    def test_a_missing_file_yields_a_stable_fingerprint_rather_than_raising(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from investment_box.config import loader
+        from investment_box.ui.state import _universe_fingerprint
+
+        monkeypatch.setattr(loader, "config_dir", lambda: tmp_path / "absent")
+        assert _universe_fingerprint() == (0.0, 0)

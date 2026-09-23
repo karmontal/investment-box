@@ -83,10 +83,37 @@ def get_settings_service() -> SettingsService:
     return SettingsService(services.database, services.settings, services.audit)
 
 
+def _universe_fingerprint() -> tuple[float, int]:
+    """Modification time and size of the universe file.
+
+    Used as a cache key so editing the file invalidates the cache by itself.
+    Size is included because a filesystem with coarse mtime resolution can
+    report the same second for an edit made moments later.
+    """
+    from investment_box.config.loader import UNIVERSE_CONFIG_NAME, config_dir
+
+    try:
+        stat = (config_dir() / UNIVERSE_CONFIG_NAME).stat()
+    except OSError:
+        return (0.0, 0)
+    return (stat.st_mtime, stat.st_size)
+
+
 @st.cache_data(show_spinner=False)
-def get_universe() -> tuple[list[Instrument], list[str]]:
+def _load_universe(_fingerprint: tuple[float, int]) -> tuple[list[Instrument], list[str]]:
     config = load_universe_file()
     return UniverseBuilder.load_instruments(config), UniverseBuilder.benchmark_symbols(config)
+
+
+def get_universe() -> tuple[list[Instrument], list[str]]:
+    """The configured universe, re-read whenever the file changes.
+
+    `config/` is a live bind mount in the container precisely so the list can
+    be edited without a rebuild. Caching it with no key defeated that: marking
+    a fund `verified: true` changed nothing on screen until someone restarted
+    the container, which looks exactly like the edit not having worked.
+    """
+    return _load_universe(_universe_fingerprint())
 
 
 def get_state() -> DashboardState:
