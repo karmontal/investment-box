@@ -57,11 +57,20 @@ services:
       IB__DATA_DIR: /data
       TZ: Asia/Jerusalem
     ports:
-      # Bound to localhost only. This dashboard has a kill switch and shows
-      # account balances; it must not be reachable from the internet. Put it
-      # behind a VPN or an authenticating reverse proxy if you need remote
-      # access.
-      - "127.0.0.1:8501:8501"
+      # The bind address is configurable for exactly one reason: to pin the
+      # dashboard to a private VPN interface. The default is loopback and must
+      # stay that way.
+      #
+      # This page has a kill switch, shows your balances and positions, and
+      # edits autonomy level and allocated capital. It has NO login screen of
+      # any kind -- the network boundary IS the authentication.
+      #
+      # Tailscale: put IB_DASHBOARD_BIND=100.x.y.z in .env, taking the address
+      # from `tailscale ip -4` ON THIS HOST. Never set it to 0.0.0.0, and never
+      # to the public IP. Publishing a port also writes Docker's own iptables
+      # rules AHEAD of ufw's, so an exposed dashboard stays reachable even
+      # though `ufw status` insists the port is denied.
+      - "${IB_DASHBOARD_BIND:-127.0.0.1}:8501:8501"
     volumes:
       - investment-data:/data
       - ./config:/app/config:ro

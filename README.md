@@ -568,16 +568,51 @@ docker compose logs engine | grep -E "ENGINE|provider_selected"
 Do not `scp` your `.env` from your laptop. Type the credentials on the VPS, and
 rotate any token that has been on more than one machine.
 
-**Reaching the dashboard.** It binds to `127.0.0.1:8501` and must stay that
-way — it has a kill switch and shows account balances. Tunnel to it over SSH
-rather than opening the port:
+**Reaching the dashboard.** It binds to `127.0.0.1:8501` by default. The page
+has no authentication of any kind — it carries a kill switch, shows balances
+and positions, and edits autonomy level and allocated capital — so the network
+boundary *is* the authentication. Two safe ways in:
+
+*Ad hoc, nothing to install:* an SSH tunnel.
 
 ```bash
 ssh -L 8501:127.0.0.1:8501 user@your-vps    # then open http://localhost:8501
 ```
 
-If you publish that port instead, anyone who finds it can halt your engine and
-read your positions. There is no login screen; SSH is the authentication.
+*Always on, from any of your devices:* [Tailscale](https://tailscale.com). It
+gives the host a private `100.x.y.z` address reachable only by your own
+machines, over WireGuard, with no port open to the internet.
+
+```bash
+# on the VPS
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+tailscale ip -4                     # e.g. 100.101.102.103
+
+# then in .env on the VPS
+echo "IB_DASHBOARD_BIND=100.101.102.103" >> .env
+docker compose up -d
+```
+
+Install Tailscale on your laptop and phone too, sign in to the same account,
+and the dashboard is at `http://100.101.102.103:8501` from any of them.
+
+`IB_DASHBOARD_BIND` exists **only** to pin the dashboard to a private VPN
+interface. Never set it to `0.0.0.0` or a public IP. Publishing a port makes
+Docker write its own iptables rules *ahead of* ufw's, so an exposed dashboard
+stays reachable while `ufw status` still reports the port as denied — the
+firewall will tell you that you are safe when you are not.
+
+The compose file uses `${IB_DASHBOARD_BIND:-127.0.0.1}`. The colon matters: the
+`:-` form replaces an empty value as well as an unset one, so a stray
+`IB_DASHBOARD_BIND=` in `.env` falls back to loopback instead of binding
+everything. `tests/unit/test_deployment_config.py` asserts that, and that no
+service binds a public address.
+
+One ordering note: the container binds the Tailscale address at start, so if
+Docker comes up before `tailscaled` after a reboot the bind fails. `restart:
+unless-stopped` retries until the interface exists, so it heals itself — but
+that is why the dashboard can take a minute to appear after a host reboot.
 
 **What survives what.** Trade history, the audit log and the cache live on the
 `investment-data` named volume, not in the image, so `docker compose up -d
