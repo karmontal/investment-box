@@ -83,9 +83,23 @@ class ComplianceTracker:
     # ------------------------------------------------------------- screening
 
     def screen(self, symbol: str, *, force: bool = False) -> ComplianceRecord:
-        """Return the current status, re-screening if the last one is stale."""
+        """Return the current status, re-screening if the last one is stale.
+
+        A cached verdict is only reused when it came from the provider now in
+        use. Reusing one across a provider change is how a mock's UNKNOWN
+        survives being replaced by a real source -- the verdict looks fresh, so
+        nothing re-screens, and the symbol stays untradable for a reason that
+        no longer exists. The same applies in reverse, which matters more: a
+        COMPLIANT from a provider you have since replaced is not evidence about
+        the new one.
+        """
         existing = self.latest(symbol)
-        if existing is not None and not existing.is_stale and not force:
+        if (
+            existing is not None
+            and not existing.is_stale
+            and not force
+            and existing.source == self.provider.name
+        ):
             return existing
 
         result = self.provider.screen(symbol)

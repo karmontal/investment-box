@@ -24,7 +24,7 @@ from investment_box.forecast.calibration import CalibrationTracker
 from investment_box.services.container import ServiceContainer, build_services
 from investment_box.services.research import ResearchService, ResearchSnapshot
 from investment_box.services.settings_service import SettingsService
-from investment_box.shariah.providers.mock_external import MockExternalProvider
+from investment_box.shariah.providers.factory import build_screening_provider
 from investment_box.shariah.status import ComplianceTracker
 from investment_box.strategies import STRATEGY_REGISTRY
 from investment_box.universe.builder import Instrument, UniverseBuilder
@@ -57,13 +57,15 @@ def get_services() -> ServiceContainer:
 def get_compliance_tracker() -> ComplianceTracker:
     """Compliance tracker.
 
-    Wired to the mock provider until a certified vendor is configured. It
-    reports every symbol as UNKNOWN, which is the honest default and is
-    surfaced in the UI rather than hidden.
+    Uses the same provider composition as the engine, so the dashboard can
+    never show a verdict the engine would not act on. In Mode A that means
+    certified funds answer from their own board and everything else is
+    UNKNOWN, which is surfaced in the UI rather than hidden.
     """
     services = get_services()
+    instruments = UniverseBuilder.load_instruments(load_universe_file())
     return ComplianceTracker(
-        MockExternalProvider(clock=services.clock),
+        build_screening_provider(services.settings, instruments, clock=services.clock),
         services.database,
         services.settings.shariah,
         services.audit,

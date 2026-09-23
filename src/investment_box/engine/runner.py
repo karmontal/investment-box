@@ -30,7 +30,7 @@ from investment_box.risk.manager import RiskManager
 from investment_box.risk.settlement import SettlementLedger
 from investment_box.services.container import ServiceContainer
 from investment_box.services.research import ResearchService
-from investment_box.shariah.providers.mock_external import MockExternalProvider
+from investment_box.shariah.providers.factory import build_screening_provider
 from investment_box.shariah.status import ComplianceTracker
 from investment_box.strategies import STRATEGY_REGISTRY
 from investment_box.telegram.bot import TelegramStack
@@ -195,8 +195,9 @@ def build_engine(
         clock=services.clock,
         live_guard=live_guard,
     )
+    instruments = UniverseBuilder.load_instruments(load_universe_file())
     compliance = ComplianceTracker(
-        MockExternalProvider(clock=services.clock),
+        build_screening_provider(settings, instruments, clock=services.clock),
         services.database,
         settings.shariah,
         services.audit,
@@ -211,8 +212,6 @@ def build_engine(
         clock=services.clock,
         calendar=calendar,
     )
-
-    instruments = UniverseBuilder.load_instruments(load_universe_file())
 
     # --- refuse to run when anything is unsafe --------------------------------
     unverified = [i.symbol for i in instruments if not i.verified]

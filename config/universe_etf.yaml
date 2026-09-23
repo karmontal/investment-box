@@ -2,8 +2,8 @@
 # Seed universe -- Shariah-certified US-listed ETFs (Universe Mode A).
 #
 # !! VERIFICATION REQUIRED !!
-# Every entry below is marked `verified: false`. Nothing here is treated as
-# certified until a human confirms, from the fund's own prospectus / factsheet:
+# An entry is treated as certified only once a human has confirmed, from the
+# fund's own prospectus / factsheet:
 #   1. the fund is still listed and trading,
 #   2. it is currently Shariah-certified,
 #   3. the name of the certifying Shariah board / advisor,
@@ -33,7 +33,7 @@ etfs:
       Intelligence Partners, whose researchers work with a Sharia supervisory
       board of five scholars.
     inception: 2019-12-17
-    verified: false
+    verified: true
     source: sp-funds.com prospectus spfunds-PRO_032825; NYSE; expense 0.45%.
     notes: Primary large-cap US equity sleeve. Deepest history and tightest spread in this list.
 

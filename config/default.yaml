@@ -66,6 +66,11 @@ universe:
   blacklist: []
 
 shariah:
+  # The screener for symbols that carry NO certification of their own -- i.e.
+  # individual stocks in Mode B. Certified funds never reach it: their verdict
+  # comes from the Shariah board named in config/universe_etf.yaml, which is
+  # the only source that has actually ruled on them. In Mode A this key is
+  # unused, because Mode A trades nothing but certified funds.
   provider: internal_aaoifi        # internal_aaoifi | mock_external | zoya | musaffa
   non_permissible_revenue_max_pct: 0.05
   debt_to_market_cap_max_pct: 0.30
