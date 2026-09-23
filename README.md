@@ -526,6 +526,78 @@ away the view you need to see why.
 - The image's default command is the health check, not the engine, so
   `docker run` cannot start trading by accident.
 
+### Running it on a VPS
+
+Two files are gitignored and therefore **do not travel with a clone**:
+`.env` and `config/local.yaml`. Recreate both deliberately —
+`config/local.example.yaml` is the template for the second.
+
+They fail differently, and only one of them fails loudly. Without `.env` the
+engine falls back to the in-memory mock broker and refuses to trade, because
+autonomy 1 requires an approval channel and Telegram is unconfigured; you will
+see that in the startup blockers. Without `config/local.yaml` nothing warns you
+at all: autonomy silently drops to 1 and the whitelist empties, so the engine
+runs, looks healthy, and asks for approval on trades you had configured it to
+place by itself.
+
+Minimum sane host: 2 vCPU, 2 GB RAM, 10 GB disk. The image is ~1.4 GB because
+pandas, scipy, scikit-learn and Streamlit are large; a 1 GB box will OOM during
+the build.
+
+```bash
+# On the VPS (Debian/Ubuntu)
+curl -fsSL https://get.docker.com | sh
+sudo systemctl enable --now docker      # survives reboot
+sudo usermod -aG docker "$USER"         # log out and back in
+
+git clone git@github.com:<you>/investment-box.git
+cd investment-box
+
+cp .env.example .env
+chmod 600 .env                          # it holds live credentials
+nano .env                               # type them here, on the box
+
+cp config/local.example.yaml config/local.yaml
+nano config/local.yaml                  # whitelist and autonomy level
+
+docker compose up -d --build
+docker compose ps                       # both must report (healthy)
+docker compose logs engine | grep -E "ENGINE|provider_selected"
+```
+
+Do not `scp` your `.env` from your laptop. Type the credentials on the VPS, and
+rotate any token that has been on more than one machine.
+
+**Reaching the dashboard.** It binds to `127.0.0.1:8501` and must stay that
+way — it has a kill switch and shows account balances. Tunnel to it over SSH
+rather than opening the port:
+
+```bash
+ssh -L 8501:127.0.0.1:8501 user@your-vps    # then open http://localhost:8501
+```
+
+If you publish that port instead, anyone who finds it can halt your engine and
+read your positions. There is no login screen; SSH is the authentication.
+
+**What survives what.** Trade history, the audit log and the cache live on the
+`investment-data` named volume, not in the image, so `docker compose up -d
+--build` after a `git pull` keeps them. `docker compose down` keeps the volume;
+`down -v` destroys it. Back it up before any upgrade you are unsure about:
+
+```bash
+docker run --rm -v investment-data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/investment-data-$(date +%F).tar.gz -C /data .
+```
+
+**Clock.** The scheduler fires on market time (`America/New_York`) regardless of
+the host's zone, and the containers set `TZ=Asia/Jerusalem` for display. Make
+sure the host runs NTP (`timedatectl status`) — a drifting clock moves the
+signal time and corrupts T+1 settlement arithmetic.
+
+**Upgrading.** `git pull && docker compose up -d --build`. The engine stops
+within its 30 s grace period; an in-flight order is already recorded in the
+database before submission, so a restart cannot duplicate it.
+
 ## Verifying the universe
 
 The engine refuses to trade any symbol whose `verified` flag is false in

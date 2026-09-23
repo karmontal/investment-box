@@ -1,0 +1,22 @@
+# Copy to config/local.yaml and edit. THIS FILE IS A TEMPLATE; local.yaml
+# itself is gitignored, so it never travels with a clone -- which means a fresh
+# deployment silently falls back to default.yaml. That is safe (autonomy drops
+# to 1, suggest-only) but it is not what you configured, and nothing warns you.
+# Recreate it deliberately on every machine you deploy to.
+#
+# Layering: default.yaml < local.yaml < IB__* environment variables.
+
+universe:
+  # A whitelist does two things at once, and the second surprises people:
+  #   1. it selects which symbols autonomy level 2 may trade WITHOUT asking;
+  #   2. it restricts the tradable universe to exactly these symbols -- once a
+  #      whitelist is in force, UniverseBuilder refuses everything else.
+  # So when you verify a new fund in universe_etf.yaml, add it here too, or the
+  # engine will never see it.
+  whitelist: [SPUS, SPSK, HLAL]
+
+engine:
+  # 1 = suggest only, every order needs Telegram approval (a timeout rejects).
+  # 2 = place whitelisted symbols without asking; everything else still asks.
+  # 3 = no approval step at all, for any symbol.
+  autonomy_level: 2
