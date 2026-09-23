@@ -16,7 +16,7 @@ from investment_box.config.schema import (
     SettlementConfig,
     UniverseConfig,
 )
-from investment_box.core.types import TradingMode
+from investment_box.core.types import AutonomyLevel, TradingMode
 
 
 class TestDeepMerge:
@@ -381,3 +381,34 @@ class TestSeedUniverseProvenance:
                 f"write it unquoted as YYYY-MM-DD"
             )
             assert inception <= today, f"{entry['symbol']}: inception {inception} is in the future"
+
+
+class TestDeploymentConfigDoesNotReachTests:
+    """A machine's own `config/local.yaml` must not change what the suite asserts.
+
+    Found the hard way: verifying funds and raising `autonomy_level` to 2 in a
+    real deployment broke five unrelated tests on that machine and nowhere
+    else. A test suite whose result depends on the operator's tuning cannot
+    tell you whether the code is correct.
+    """
+
+    def test_the_suite_sees_shipped_defaults_not_local_overrides(self) -> None:
+        from investment_box.config.loader import config_dir, load_settings
+
+        local = config_dir() / "local.yaml"
+        settings = load_settings()
+
+        if local.exists():
+            raw = local.read_text()
+            if "autonomy_level: 2" in raw:
+                assert settings.engine.autonomy_level is AutonomyLevel.SUGGEST_ONLY, (
+                    "config/local.yaml leaked into the test suite"
+                )
+            if "whitelist: [" in raw:
+                assert settings.universe.whitelist == [], (
+                    "config/local.yaml's whitelist leaked into the test suite"
+                )
+
+        # True regardless of whether this machine happens to have a local.yaml.
+        assert settings.engine.autonomy_level is AutonomyLevel.SUGGEST_ONLY
+        assert settings.universe.whitelist == []

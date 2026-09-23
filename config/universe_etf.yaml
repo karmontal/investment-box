@@ -46,7 +46,7 @@ etfs:
       ongoing and annual basis for income remediation and purification).
       Index built and calculated by FTSE International Limited.
     inception: 2019-07-15
-    verified: false
+    verified: true
     source: Wahed summary prospectus 497K (hlal.wahedinvest.com); NASDAQ.
     notes: Alternative US equity sleeve; overlaps SPUS substantially.
 
@@ -58,7 +58,7 @@ etfs:
       Raqaba LLC (Sharia Advisor; annual Sharia audit). Same advisor as the
       other SP Funds entries -- they share one prospectus.
     inception: 2019-12-27
-    verified: false
+    verified: true
     source: sp-funds.com prospectus spfunds-PRO_2026-06-05; NYSE; expense 0.50%.
     notes: >-
       Defensive sleeve and the idle-cash parking symbol. Sukuk are

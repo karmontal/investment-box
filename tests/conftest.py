@@ -56,6 +56,13 @@ def _isolate_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     from investment_box.config import loader
 
     monkeypatch.setattr(loader, "DEFAULT_ENV_FILE", None)
+
+    # And ignore any real config/local.yaml. It is this machine's deployment
+    # tuning -- a whitelist, a raised autonomy level -- and the suite asserts
+    # against the shipped defaults. Without this, verifying funds and raising
+    # autonomy on one machine breaks five unrelated tests there and nowhere
+    # else, which reads as a code regression and is not one.
+    monkeypatch.setattr(loader, "LOCAL_CONFIG_NAME", "local.testing-is-isolated.yaml")
     clear_caches()
 
 
