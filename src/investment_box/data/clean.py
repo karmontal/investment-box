@@ -75,7 +75,9 @@ class DataQualityReport:
         return ", ".join(parts)
 
 
-def clean_ohlcv(frame: OHLCVFrame, symbol: str, *, strict: bool = False) -> tuple[OHLCVFrame, DataQualityReport]:
+def clean_ohlcv(
+    frame: OHLCVFrame, symbol: str, *, strict: bool = False
+) -> tuple[OHLCVFrame, DataQualityReport]:
     """Normalise and clean a raw provider frame.
 
     Steps, in order: normalise the index to UTC and sort it, drop duplicate

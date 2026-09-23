@@ -412,3 +412,66 @@ class TestDeploymentConfigDoesNotReachTests:
         # True regardless of whether this machine happens to have a local.yaml.
         assert settings.engine.autonomy_level is AutonomyLevel.SUGGEST_ONLY
         assert settings.universe.whitelist == []
+
+
+class TestEverySourceFileIsInTheRepository:
+    """A clone must contain the whole application.
+
+    This exists because it did not. `.gitignore` carried an unanchored `data/`
+    to keep the runtime state directory out of the repo; git applies such a
+    pattern at every depth, so it also excluded `src/investment_box/data/` --
+    the entire data layer. Every local test still passed, because the files
+    were present on disk and merely untracked. The failure only surfaced on a
+    fresh clone, as `ModuleNotFoundError: No module named 'investment_box.data'`.
+
+    Note this is NOT how `.dockerignore` reads the same line: its patterns are
+    anchored to the build context root, so the image was fine and the
+    repository was not. Identical text, different semantics.
+    """
+
+    @staticmethod
+    def _tracked() -> set[str]:
+        import subprocess
+
+        root = Path(__file__).resolve().parents[2]
+        out = subprocess.run(
+            ["git", "ls-files", "src", "scripts", "tests"],  # noqa: S607
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return {line.strip() for line in out.stdout.splitlines() if line.strip()}
+
+    def test_no_python_source_file_is_untracked(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        tracked = self._tracked()
+
+        missing: list[str] = []
+        for directory in ("src", "scripts", "tests"):
+            for path in (root / directory).rglob("*.py"):
+                if any(part in {"__pycache__", ".venv"} for part in path.parts):
+                    continue
+                rel = path.relative_to(root).as_posix()
+                if rel not in tracked:
+                    missing.append(rel)
+
+        assert not missing, (
+            "these source files exist on disk but are not in the repository, so a "
+            f"clone would not build: {sorted(missing)}. Check .gitignore for an "
+            f"unanchored directory pattern -- git applies those at every depth."
+        )
+
+    def test_every_package_directory_has_a_tracked_init(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        tracked = self._tracked()
+
+        missing = [
+            (pkg.relative_to(root) / "__init__.py").as_posix()
+            for pkg in (root / "src" / "investment_box").rglob("*")
+            if pkg.is_dir()
+            and pkg.name != "__pycache__"
+            and (pkg / "__init__.py").exists()
+            and (pkg.relative_to(root) / "__init__.py").as_posix() not in tracked
+        ]
+        assert not missing, f"untracked package initialisers: {sorted(missing)}"

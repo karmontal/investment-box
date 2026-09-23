@@ -98,7 +98,9 @@ class ParquetCache:
             return None
         return cast(pd.Timestamp, frame.index[-1]).date()
 
-    def is_fresh(self, symbol: str, timeframe: str = "1d", *, now: dt.datetime | None = None) -> bool:
+    def is_fresh(
+        self, symbol: str, timeframe: str = "1d", *, now: dt.datetime | None = None
+    ) -> bool:
         """Whether the cache is fresh enough to serve without re-fetching.
 
         Freshness is measured from the newest *bar*, not the file's mtime.

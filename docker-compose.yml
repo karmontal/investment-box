@@ -22,6 +22,10 @@ services:
       # Mounted read-only: the engine reads config and must never rewrite it.
       - ./config:/app/config:ro
     restart: unless-stopped
+    # tini as PID 1: forwards signals and reaps zombies. The engine installs its
+    # own SIGTERM handler, so this is belt-and-braces rather than the fix --
+    # but PID 1 semantics are subtle enough to deserve both.
+    init: true
     stop_grace_period: 30s
     healthcheck:
       # Builds the service container, not just an import. A bare import passes

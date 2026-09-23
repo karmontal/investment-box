@@ -12,6 +12,7 @@ a later check to catch it.
 from __future__ import annotations
 
 import asyncio
+import signal
 from dataclasses import dataclass
 
 from investment_box.config.loader import load_universe_file
@@ -301,12 +302,49 @@ def build_engine(
 
 
 async def run_forever(runner: EngineRunner) -> None:
-    """Start the engine and keep the process alive until interrupted."""
+    """Start the engine and keep the process alive until asked to stop.
+
+    SIGTERM is handled explicitly, and that is not optional here. In a
+    container this process is PID 1, and the kernel gives PID 1 no default
+    signal dispositions: a SIGTERM with no installed handler is discarded
+    silently. Without this, ``docker stop`` appeared to hang, waited out the
+    full 30 s grace period and then SIGKILLed the engine -- every restart,
+    every upgrade, every host reboot -- so the scheduler never shut down, and
+    a cycle interrupted mid-flight got no chance to finish recording what it
+    had already done.
+    """
     await runner.start()
-    try:
+
+    loop = asyncio.get_running_loop()
+    stopping = asyncio.Event()
+
+    def _request_stop(signame: str) -> None:
+        # Log and set; the actual shutdown runs on the main path, where it can
+        # await runner.stop() rather than racing it from a signal context.
+        log.info("engine.signal_received", signal=signame, action="shutting down")
+        stopping.set()
+
+    installed: list[signal.Signals] = []
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, _request_stop, sig.name)
+            installed.append(sig)
+        except (NotImplementedError, RuntimeError):
+            # Windows, or a non-main thread. Fall back to KeyboardInterrupt.
+            log.warning("engine.signal_handler_unavailable", signal=sig.name)
+
+    async def _until_killed() -> None:
         while runner.state.state is not EngineState.KILLED:
-            await asyncio.sleep(60)
+            await asyncio.sleep(1)
+
+    try:
+        await asyncio.wait(
+            [asyncio.create_task(stopping.wait()), asyncio.create_task(_until_killed())],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
     except (KeyboardInterrupt, asyncio.CancelledError):
         log.info("engine.interrupted")
     finally:
+        for sig in installed:
+            loop.remove_signal_handler(sig)
         await runner.stop()

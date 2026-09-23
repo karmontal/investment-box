@@ -105,7 +105,11 @@ class MarketDataRepository:
 
             secrets = get_secrets()
             alpaca = AlpacaDataProvider(
-                api_key=secrets.alpaca_api_key.get_secret_value() if secrets.alpaca_api_key else None,
+                api_key=(
+                    secrets.alpaca_api_key.get_secret_value()
+                    if secrets.alpaca_api_key
+                    else None
+                ),
                 secret_key=(
                     secrets.alpaca_secret_key.get_secret_value()
                     if secrets.alpaca_secret_key
@@ -177,7 +181,11 @@ class MarketDataRepository:
             fetch_start = self._incremental_start(cached, start, force_refresh=force_refresh)
             raw, source = self._fetch(symbol, fetch_start, end)
             cleaned, report = clean_ohlcv(raw, symbol)
-            frame = self.cache.merge_write(symbol, cleaned, timeframe) if not cleaned.empty else cached
+            frame = (
+                self.cache.merge_write(symbol, cleaned, timeframe)
+                if not cleaned.empty
+                else cached
+            )
             from_cache = False
 
         window = self._slice(frame, start, end, as_of)
@@ -237,7 +245,12 @@ class MarketDataRepository:
                 return frame, self.provider.name
             log.info("data.empty_response", symbol=symbol, provider=self.provider.name)
         except Exception as exc:  # noqa: BLE001 - fall through to the backup provider
-            log.warning("data.provider_failed", symbol=symbol, provider=self.provider.name, error=str(exc))
+            log.warning(
+                "data.provider_failed",
+                symbol=symbol,
+                provider=self.provider.name,
+                error=str(exc),
+            )
 
         if self.fallback is not None and self.fallback.is_available():
             log.warning("data.using_fallback", symbol=symbol, fallback=self.fallback.name)
@@ -253,9 +266,16 @@ class MarketDataRepository:
         last = cast(pd.Timestamp, cached.index[-1]).date()
         return first <= start and last >= end
 
-    @staticmethod
-    def _incremental_start(cached: OHLCVFrame, start: dt.date, *, force_refresh: bool) -> dt.date:
-        """Fetch only the missing tail when the cache already covers the head."""
+    def _incremental_start(
+        self, cached: OHLCVFrame, start: dt.date, *, force_refresh: bool
+    ) -> dt.date:
+        """Fetch only the missing tail when the cache already covers the head.
+
+        "Today" comes from the injected clock, never ``date.today()``. The
+        latter reads the host's local zone -- in the container that is
+        Asia/Jerusalem while the market day is New York -- so on either side of
+        midnight the two disagree and the tail is fetched for the wrong day.
+        """
         if force_refresh or cached.empty:
             return start
         first_cached = cached.index[0].date()
@@ -263,7 +283,7 @@ class MarketDataRepository:
         if first_cached > start:
             return start  # a hole at the front: refetch the whole window
         # Re-fetch the final cached day too, so a late correction is picked up.
-        return min(last_cached, dt.date.today()) if last_cached >= start else start
+        return min(last_cached, self.clock_date()) if last_cached >= start else start
 
     @staticmethod
     def _slice(
