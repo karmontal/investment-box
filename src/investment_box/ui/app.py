@@ -27,6 +27,7 @@ from investment_box.ui import components as ui
 from investment_box.ui.controls import render_controls
 from investment_box.ui.state import (
     clear_caches,
+    get_engine_status,
     get_research,
     get_settings_service,
     get_state,
@@ -55,7 +56,25 @@ def main() -> None:
         st.header("Status")
         st.metric("Allocated capital", ui.money(settings.capital.allocation_usd))
         st.metric("Autonomy level", settings.engine.autonomy_level.value)
-        st.metric("Engine", "running" if settings.engine.enabled else "idle (phase 4)")
+        engine_state, engine_since = get_engine_status()
+        st.metric(
+            "Engine",
+            engine_state,
+            help=(
+                "The engine's last reported state, read from the audit log it shares "
+                "with this dashboard. The engine runs in its own container and is not "
+                "queried directly, so this is what it last said, not a live ping."
+            ),
+        )
+        if engine_since is not None:
+            from zoneinfo import ZoneInfo
+
+            from investment_box.core.clock import to_display
+
+            local = to_display(engine_since, ZoneInfo(settings.i18n.display_timezone))
+            st.caption(f"last reported {local:%H:%M %Z}")
+        elif engine_state == "unknown":
+            st.caption("no engine has started against this database")
 
         strategy_name = st.selectbox(
             "Strategy", list(STRATEGY_REGISTRY), index=0,

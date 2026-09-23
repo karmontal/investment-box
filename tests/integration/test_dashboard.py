@@ -169,3 +169,60 @@ class TestComponents:
         assert "Confidence" in frame.columns
         assert "Record" in frame.columns
         assert "too few trades" in frame.iloc[0]["Record"]
+
+
+class TestEngineStatusIsReal:
+    """The sidebar must report the engine, not a config flag.
+
+    It read `settings.engine.enabled` -- a flag defaulting to false that the
+    engine never sets -- and rendered "idle (phase 4)" beside a perfectly
+    healthy engine that had been running for hours. A status indicator that
+    cannot go wrong is not an indicator.
+    """
+
+    def test_it_reports_unknown_when_no_engine_has_ever_run(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from investment_box.ui import state
+
+        state.get_engine_status.clear()
+        status, since = state.get_engine_status()
+        assert status == "unknown"
+        assert since is None
+
+    def test_it_reports_the_last_transition_the_engine_recorded(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from investment_box.ui import state
+
+        services = state.get_services()
+        services.audit.record("engine.running", "idle -> running: started", actor="scheduler")
+
+        state.get_engine_status.clear()
+        status, since = state.get_engine_status()
+        assert status == "running"
+        assert since is not None
+
+    def test_a_later_transition_supersedes_an_earlier_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from investment_box.ui import state
+
+        services = state.get_services()
+        services.audit.record("engine.running", "idle -> running", actor="scheduler")
+        services.audit.record("engine.paused", "running -> paused: margin", actor="scheduler")
+
+        state.get_engine_status.clear()
+        status, _ = state.get_engine_status()
+        assert status == "paused", "the sidebar must show the newest state, not the first"
+
+    def test_unrelated_audit_events_are_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from investment_box.ui import state
+
+        services = state.get_services()
+        services.audit.record("engine.running", "idle -> running", actor="scheduler")
+        services.audit.record("order.submitted", "bought SPUS", actor="engine")
+
+        state.get_engine_status.clear()
+        status, _ = state.get_engine_status()
+        assert status == "running", "only engine.* transitions describe the engine"

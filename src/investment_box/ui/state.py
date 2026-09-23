@@ -168,3 +168,33 @@ def clear_caches() -> None:
     """Drop every cache. Bound to the Refresh button."""
     st.cache_data.clear()
     st.cache_resource.clear()
+
+@st.cache_data(ttl=15, show_spinner=False)
+def get_engine_status() -> tuple[str, dt.datetime | None]:
+    """The engine's last reported state, and when it reported it.
+
+    The engine runs in its own container and keeps its state machine in
+    memory, so the dashboard cannot ask it directly. It does record every
+    transition to the audit log, which both containers share, so that is the
+    honest source. Previously this metric read `settings.engine.enabled` -- a
+    config flag that defaults to false and that the engine never sets -- so a
+    perfectly healthy engine was reported as "idle (phase 4)" forever.
+
+    Returns ("unknown", None) when no engine has ever started against this
+    database. A short TTL because this is a liveness indicator, not data.
+    """
+    from sqlalchemy import select
+
+    from investment_box.db.models import AuditLog
+
+    services = get_services()
+    with services.database.session() as session:
+        row = session.scalar(
+            select(AuditLog)
+            .where(AuditLog.event_type.like("engine.%"))
+            .order_by(AuditLog.id.desc())
+            .limit(1)
+        )
+        if row is None:
+            return ("unknown", None)
+        return (row.event_type.split(".", 1)[1], row.created_at)
