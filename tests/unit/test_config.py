@@ -505,6 +505,30 @@ class TestUniverseEditsAreSeenWithoutARestart:
             "keeps serving the version it read at startup"
         )
 
+    def test_the_cache_key_argument_is_actually_hashed_by_streamlit(self) -> None:
+        """Streamlit ignores any cached argument whose name starts with `_`.
+
+        That rule is used deliberately elsewhere in this module (`_as_of` on
+        `get_research`), which is what made the mistake so easy: naming the key
+        `_fingerprint` removed it from the cache key, so the cache stayed as
+        unkeyed as it had been. The attribute existed, the code looked fixed,
+        and the dashboard kept serving the list it read at startup.
+        """
+        import inspect
+
+        from investment_box.ui.state import _load_universe
+
+        # Streamlit wraps the function; unwrap to reach the real signature.
+        target = getattr(_load_universe, "__wrapped__", _load_universe)
+        params = list(inspect.signature(target).parameters)
+
+        assert params, "_load_universe must take a cache-key argument"
+        leading_underscore = [p for p in params if p.startswith("_")]
+        assert not leading_underscore, (
+            f"{leading_underscore} start with an underscore, so Streamlit will not "
+            f"hash them and the cache will never invalidate. Drop the underscore."
+        )
+
     def test_a_missing_file_yields_a_stable_fingerprint_rather_than_raising(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

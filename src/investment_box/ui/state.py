@@ -100,7 +100,17 @@ def _universe_fingerprint() -> tuple[float, int]:
 
 
 @st.cache_data(show_spinner=False)
-def _load_universe(_fingerprint: tuple[float, int]) -> tuple[list[Instrument], list[str]]:
+def _load_universe(fingerprint: tuple[float, int]) -> tuple[list[Instrument], list[str]]:
+    """Read the universe file. ``fingerprint`` exists solely to key the cache.
+
+    Its name must NOT start with an underscore. Streamlit skips hashing any
+    argument whose name begins with one -- the same rule ``get_research`` relies
+    on deliberately for ``_as_of`` -- so calling it ``_fingerprint`` silently
+    removed it from the cache key and left the cache exactly as unkeyed as
+    before. The function looked fixed, the attribute existed, and the dashboard
+    still served the list it read at startup.
+    """
+    del fingerprint  # used only as part of the cache key
     config = load_universe_file()
     return UniverseBuilder.load_instruments(config), UniverseBuilder.benchmark_symbols(config)
 
