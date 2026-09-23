@@ -8,39 +8,58 @@
 #   2. it is currently Shariah-certified,
 #   3. the name of the certifying Shariah board / advisor,
 #   4. it is neither leveraged nor inverse.
-# Phase 3 adds `scripts/verify_universe.py`, which checks listing + liquidity
-# automatically and prints a checklist for the parts only you can confirm.
+# `scripts/verify_universe.py` checks listing, liquidity, history and name
+# drift automatically, and prints a checklist for the parts only you can
+# confirm. It will never set `verified` for you -- that flag is your
+# attestation that you read the documents, and a script cannot attest.
 # The engine REFUSES to trade any symbol whose `verified` flag is false.
 # `inception` is used to prevent look-ahead: a fund is excluded from any
 # backtest window that starts before its inception date.
+#
+# The `certifying_board` and `inception` values below were read off the
+# documents cited in each entry's `source` on 2026-09-23. Re-read them before
+# you flip `verified`: certification can lapse, and a fund can be renamed,
+# merged or closed without notice.
 # =============================================================================
 
 etfs:
   - symbol: SPUS
     name: SP Funds S&P 500 Sharia Industry Exclusions ETF
-    issuer: SP Funds
+    issuer: SP Funds (adviser ShariaPortfolio, Inc.)
     asset_class: equity_us
-    certifying_board: null        # fill from prospectus
-    inception: null               # fill: YYYY-MM-DD
+    certifying_board: >-
+      Raqaba LLC (Sharia Advisor; performs annual Sharia audits, works to
+      AAOIFI and IFSB standards). Index screens supplied by Ratings
+      Intelligence Partners, whose researchers work with a Sharia supervisory
+      board of five scholars.
+    inception: 2019-12-17
     verified: false
-    notes: Primary large-cap US equity sleeve.
+    source: sp-funds.com prospectus spfunds-PRO_032825; NYSE; expense 0.45%.
+    notes: Primary large-cap US equity sleeve. Deepest history and tightest spread in this list.
 
   - symbol: HLAL
     name: Wahed FTSE USA Shariah ETF
-    issuer: Wahed Invest
+    issuer: Wahed Invest LLC
     asset_class: equity_us
-    certifying_board: null
-    inception: null
+    certifying_board: >-
+      Yasaar Limited (Sharia consultant; reviews index constituents on an
+      ongoing and annual basis for income remediation and purification).
+      Index built and calculated by FTSE International Limited.
+    inception: 2019-07-15
     verified: false
+    source: Wahed summary prospectus 497K (hlal.wahedinvest.com); NASDAQ.
     notes: Alternative US equity sleeve; overlaps SPUS substantially.
 
   - symbol: SPSK
     name: SP Funds Dow Jones Global Sukuk ETF
-    issuer: SP Funds
+    issuer: SP Funds (adviser ShariaPortfolio, Inc.)
     asset_class: sukuk
-    certifying_board: null
-    inception: null
+    certifying_board: >-
+      Raqaba LLC (Sharia Advisor; annual Sharia audit). Same advisor as the
+      other SP Funds entries -- they share one prospectus.
+    inception: 2019-12-27
     verified: false
+    source: sp-funds.com prospectus spfunds-PRO_2026-06-05; NYSE; expense 0.50%.
     notes: >-
       Defensive sleeve and the idle-cash parking symbol. Sukuk are
       asset-backed, not interest-bearing, but confirm the specific fund's
@@ -48,51 +67,75 @@ etfs:
 
   - symbol: SPRE
     name: SP Funds S&P Global REIT Sharia ETF
-    issuer: SP Funds
+    issuer: SP Funds (adviser ShariaPortfolio, Inc.)
     asset_class: reit
-    certifying_board: null
-    inception: null
+    certifying_board: Raqaba LLC (Sharia Advisor; annual Sharia audit).
+    inception: 2020-12-29
     verified: false
+    source: sp-funds.com prospectus spfunds-PRO_032825; NYSE; expense 0.50%.
     notes: Young fund -- short history limits backtest coverage.
 
   - symbol: SPTE
     name: SP Funds S&P Global Technology ETF
-    issuer: SP Funds
+    issuer: SP Funds (adviser ShariaPortfolio, Inc.)
     asset_class: equity_sector
-    certifying_board: null
-    inception: null
+    certifying_board: >-
+      Raqaba LLC, titled "Shariah Auditor" in this fund's prospectus rather
+      than "Sharia Advisor" as in the older one. Same firm, same role.
+    inception: 2023-11-30
     verified: false
-    notes: Young fund -- short history limits backtest coverage.
+    source: sp-funds.com 497 prospectus 2024-05 (SPTE/SPWO); NYSE; expense 0.55%.
+    notes: Young fund -- short history limits backtest coverage. Single-sector concentration.
 
   - symbol: SPWO
-    name: SP Funds S&P World (ex-US) ETF
-    issuer: SP Funds
+    name: SP Funds S&P World ETF
+    issuer: SP Funds (adviser ShariaPortfolio, Inc.)
     asset_class: equity_intl
-    certifying_board: null
-    inception: null
+    certifying_board: Raqaba LLC (Shariah Auditor). Index screened by a third-party consultant engaged by S&P.
+    inception: 2023-12-19
     verified: false
-    notes: Young fund -- short history limits backtest coverage.
+    source: sp-funds.com 497 prospectus 2024-05 (SPTE/SPWO); NYSE; expense 0.55%.
+    notes: >-
+      Was listed here as "S&P World (ex-US) ETF"; the prospectus name carries
+      no "(ex-US)". The mandate is still ex-US -- it tracks the S&P DM Ex-U.S.
+      & EM 50/50 Shariah Index, 500 constituents across 40 countries
+      excluding the United States -- so equity_intl is correct.
 
   - symbol: UMMA
-    name: Wahed Dow Jones Islamic World ex-US ETF
-    issuer: Wahed Invest
+    name: Wahed Dow Jones Islamic World ETF
+    issuer: Wahed Invest LLC
     asset_class: equity_intl
-    certifying_board: null
-    inception: null
+    certifying_board: null    # UNRESOLVED -- see notes. Must be filled before verifying.
+    inception: 2022-01-06
     verified: false
-    notes: Check average dollar volume -- historically thin.
+    source: umma.wahedinvest.com factsheet 2023-06-30; NASDAQ.
+    notes: >-
+      Was listed here as "Islamic World ex-US ETF"; the fund's name carries no
+      "ex-US", though the mandate is ex-US. Actively managed, largely tracking
+      the Dow Jones Islamic Market International Titans 100 Index. The
+      factsheet does not name the certifying board -- get the full prospectus
+      or SAI and identify it before verifying. Thinnest of the Wahed pair.
 
   - symbol: MNZL
-    name: null                    # UNCONFIRMED -- confirm the issuer and full name
-    issuer: null
-    asset_class: unknown
-    certifying_board: null
-    inception: null
+    name: Manzil Russell Halal USA Broad Market ETF
+    issuer: Manzil Investment Advisors, LLC (sub-adviser); EA Series Trust
+    asset_class: equity_us
+    certifying_board: >-
+      Shariah Supervisory Board of three: Dr. Shaher Abbas (IFAAS Group /
+      IFIN), Mufti Faraz Adam (Amanah Advisors Ltd), Dr. Mohamed Anouar
+      Gadhoum (IconsulTech Ltd). External Shariah auditor: IFAAS.
+    inception: 2025-11-18
     verified: false
+    source: MNZL statutory prospectus dated 2025-11-12 (etfarchitect.com); Nasdaq; expense 0.40%.
     notes: >-
-      Listed in the build spec but not confirmed here. Confirm this ticker
-      exists, is US-listed and is Shariah-certified before enabling it, or
-      remove it from this file.
+      Confirmed to exist and trade -- it was unidentified in the original
+      seed list. Tracks the Russell IdealRatings Manzil Halal USA Broad
+      Market Custom Index, which adds a human-rights screen (AFSC) on top of
+      AAOIFI-aligned Shariah screens. CAUTION: launched 2025-11-18, so it has
+      under a year of history -- too little for the 150-bar ranking window to
+      mean much, and no backtest before 2026 can include it. Its 20-day
+      average dollar volume is the thinnest here, barely above the $250k
+      liquidity floor. Consider leaving it unverified until it seasons.
 
 # Benchmarks. Fetched for comparison and regime detection only -- NEVER traded.
 benchmarks:

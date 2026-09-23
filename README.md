@@ -526,6 +526,39 @@ away the view you need to see why.
 - The image's default command is the health check, not the engine, so
   `docker run` cannot start trading by accident.
 
+## Verifying the universe
+
+The engine refuses to trade any symbol whose `verified` flag is false in
+`config/universe_etf.yaml`, and the list ships entirely unverified. That flag
+means "a human read this fund's own documents", so nothing automatic can set it.
+
+```bash
+uv run python scripts/verify_universe.py
+```
+
+The script checks the half a machine can check — that the ticker still trades,
+how many bars and how much daily volume it has, whether the last bar is stale
+enough to suggest a delisting or merger, whether the configured name still
+matches the vendor's, and whether the configured `inception` precedes the first
+bar that actually exists (the dangerous direction: it would let a backtest hold
+a fund before it launched). Then it prints the half only you can check, and says
+so plainly. It is read-only by design.
+
+Each entry carries a `source` field naming the document its `certifying_board`
+and `inception` were read from. Four tests in `tests/unit/test_config.py` guard
+the obvious way to get this wrong: an entry marked `verified: true` whose name,
+issuer, certifying board or inception is still null. A verified entry with no
+certifying board proves nobody read anything.
+
+Two notes on what verification found, as of 2026-09-23:
+
+- **MNZL** launched 2025-11-18 and has under a year of history. That is below
+  what the 150-bar ranking window needs to mean anything, and its 20-day average
+  dollar volume sits just above the `$250k` liquidity floor. It is identified and
+  real, but it has not seasoned.
+- **UMMA** is the one entry whose certifying board is still unresolved. The
+  factsheet does not name it; the full prospectus or SAI will.
+
 ## Going live
 
 Live trading is not a setting. It is a state you may only enter by producing

@@ -322,3 +322,62 @@ class TestDataDirRelocatesEverything:
         monkeypatch.setenv("IB__DATA_DIR", str(tmp_path / "state"))
         repository = MarketDataRepository.from_settings(load_settings())
         assert repository.cache.directory == tmp_path / "state" / "cache"
+
+
+class TestSeedUniverseProvenance:
+    """The shipped `config/universe_etf.yaml` must stay honest about its sources.
+
+    These guard a specific future mistake: flipping `verified: true` on an entry
+    whose provenance was never filled in. The flag is meant to assert "I read the
+    documents"; an entry with a null certifying board proves nobody did.
+    """
+
+    @staticmethod
+    def _entries() -> list[dict[str, object]]:
+        from investment_box.config.loader import load_universe_file
+
+        return list(load_universe_file()["etfs"])
+
+    def test_every_entry_has_a_symbol_and_is_unique(self) -> None:
+        symbols = [str(e["symbol"]).upper() for e in self._entries()]
+        assert symbols, "the seed universe is empty"
+        assert len(symbols) == len(set(symbols)), f"duplicate symbols: {symbols}"
+
+    @pytest.mark.parametrize("field", ["name", "issuer", "certifying_board", "inception"])
+    def test_a_verified_entry_has_its_provenance_filled_in(self, field: str) -> None:
+        missing = [
+            str(e["symbol"])
+            for e in self._entries()
+            if e.get("verified") and not e.get(field)
+        ]
+        assert not missing, (
+            f"{missing} are marked verified but have no {field}. Verification means "
+            f"you read it off the fund's own documents -- fill it in or unverify."
+        )
+
+    def test_no_entry_is_a_forbidden_instrument(self) -> None:
+        from investment_box.shariah.constraints import is_forbidden_instrument
+
+        for entry in self._entries():
+            reason = is_forbidden_instrument(
+                str(entry["symbol"]),
+                entry.get("name") and str(entry["name"]),
+                entry.get("asset_class") and str(entry["asset_class"]),
+            )
+            assert reason is None, f"{entry['symbol']}: {reason}"
+
+    def test_inception_dates_are_dates_not_strings_or_future(self) -> None:
+        import datetime as dt
+
+        today = dt.date.today()  # noqa: DTZ011 - a fund cannot launch tomorrow in any zone
+        for entry in self._entries():
+            inception = entry.get("inception")
+            if inception is None:
+                continue
+            if isinstance(inception, dt.datetime):
+                inception = inception.date()
+            assert isinstance(inception, dt.date), (
+                f"{entry['symbol']}: inception {inception!r} did not parse as a date; "
+                f"write it unquoted as YYYY-MM-DD"
+            )
+            assert inception <= today, f"{entry['symbol']}: inception {inception} is in the future"
