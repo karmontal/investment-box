@@ -27,6 +27,7 @@ from investment_box.engine.scheduler import EngineScheduler
 from investment_box.engine.state import EngineState, EngineStateMachine
 from investment_box.execution.order_manager import OrderManager
 from investment_box.forecast.calibration import CalibrationTracker
+from investment_box.forecast.track_record_store import TrackRecordStore
 from investment_box.risk.manager import RiskManager
 from investment_box.risk.settlement import SettlementLedger
 from investment_box.services.container import ServiceContainer
@@ -213,6 +214,34 @@ def build_engine(
         clock=services.clock,
         calendar=calendar,
     )
+
+    # Load measured performance, or the forecast layer reports every
+    # probability as a coin flip and refuses to act -- correct for an unmeasured
+    # strategy, and a silent deadlock when nothing can ever supply the
+    # measurement. Anything refused here is said out loud, because "the engine
+    # is quiet" and "the engine has no evidence" look identical from outside.
+    outcome = TrackRecordStore(services.database).load(
+        max_age_days=settings.engine.track_record_max_age_days,
+        now=services.clock.now(),
+    )
+    for record in outcome.records:
+        research.register_track_record(record)
+    for reason in outcome.rejected:
+        log.warning("track_record.rejected", reason=reason)
+
+    # Only the strategy actually being run can block the engine. A stale record
+    # for some other strategy in the registry is worth a log line and nothing
+    # more -- blocking on it would halt a perfectly well-measured engine.
+    if strategy_name not in outcome.loaded_strategies:
+        why = next(
+            (r for r in outcome.rejected if r.startswith(f"{strategy_name}:")),
+            "it has never been measured",
+        )
+        blockers.append(
+            f"no usable out-of-sample record for {strategy_name} ({why}). Every "
+            f"forecast reads as a coin flip and nothing will trade. Run: "
+            f"uv run python scripts/run_backtest.py --save-track-record"
+        )
 
     # --- refuse to run when anything is unsafe --------------------------------
     unverified = [i.symbol for i in instruments if not i.verified]

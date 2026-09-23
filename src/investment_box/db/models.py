@@ -311,6 +311,47 @@ class SettlementEntry(Base, TimestampMixin):
     trade_id: Mapped[int | None] = mapped_column(ForeignKey("trades.id"), nullable=True)
 
 
+class StrategyTrackRecord(Base, TimestampMixin):
+    """A strategy's measured out-of-sample performance, as the engine reads it.
+
+    This table is the link between evidence and action. Without a row here the
+    forecast layer reports every probability as a coin flip and refuses to act,
+    which is correct for a strategy nobody has measured -- but before this
+    existed there was no way to ever produce one, so the engine could not trade
+    at all. `scripts/run_backtest.py` writes; the engine reads at startup.
+
+    ``out_of_sample`` is not decoration. An in-sample figure fed in here would
+    be a lie told to the one component whose job is to be sceptical, so rows
+    without it are never loaded.
+    """
+
+    __tablename__ = "strategy_track_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    strategy: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    #: When the measurement was taken -- not the period it covers.
+    measured_at: Mapped[dt.datetime] = mapped_column(
+        TIMESTAMP, nullable=False, default=_utcnow
+    )
+    period_start: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+
+    trades: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    win_rate: Mapped[float | None] = mapped_column(nullable=True)
+    avg_return: Mapped[float | None] = mapped_column(nullable=True)
+    sharpe: Mapped[float | None] = mapped_column(nullable=True)
+
+    #: False means the numbers came from data the strategy was fitted on.
+    #: Such a row is stored for the record and never loaded into a forecast.
+    out_of_sample: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_track_record_strategy_measured", "strategy", "measured_at"),
+    )
+
+
 class SettingOverride(Base, TimestampMixin):
     """UI-editable settings that outlive a restart (symbol rules, autonomy, pause state)."""
 

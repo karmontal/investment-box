@@ -666,6 +666,51 @@ Two notes on what verification found, as of 2026-09-23:
 - **UMMA** is the one entry whose certifying board is still unresolved. The
   factsheet does not name it; the full prospectus or SAI will.
 
+## The track record, and why nothing traded without one
+
+The forecast layer refuses to act on a strategy nobody has measured: with no
+out-of-sample record every probability is reported as 0.5 and no candidate is
+actionable. That is the correct default. What was missing was any way to supply
+the measurement — the backtest computed it and discarded it, and
+`register_track_record` was called only from tests. So the engine could not
+place a trade under any configuration, and the symptom was silence rather than
+an error.
+
+```bash
+uv run python scripts/run_backtest.py --save-track-record
+```
+
+That stores each strategy's walk-forward result in `strategy_track_records`.
+The engine loads it at startup, the dashboard loads the same rows so it can
+never show a forecast the engine would not act on, and a missing record is now
+a named startup blocker instead of a quiet refusal.
+
+Two rules the store enforces, both about not deceiving the one component whose
+job is scepticism:
+
+- **In-sample numbers are stored but never loaded.** Only `out_of_sample` rows
+  reach a forecast.
+- **A record expires** after `engine.track_record_max_age_days` (default 90).
+  Costs, spreads and the universe drift; a measurement from last year is not
+  evidence about this week. An expired row is refused with its age in the
+  message, not silently ignored.
+
+### Connecting it did not make it trade
+
+It was never going to, and that is the point. The measured rotation win rate
+over 2022–2026 is **49.6% across 230 out-of-sample trades**. Shrunk toward 50%
+for sample size, the forecast lands at 50%, and the engine declines:
+
+```
+before:  SPUS: no out-of-sample record for this strategy; reported as a coin flip
+after:   SPUS: forecast is 50%, at or below a coin flip
+```
+
+The difference is between *having no evidence* and *having evidence that says
+don't*. Only the second is a working system. If you want the engine to trade
+this strategy anyway you would have to lower the confidence threshold, which
+means knowingly trading an edge that has been measured and found absent.
+
 ## Going live
 
 Live trading is not a setting. It is a state you may only enter by producing

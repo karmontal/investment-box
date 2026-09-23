@@ -21,6 +21,7 @@ import streamlit as st
 
 from investment_box.config.loader import load_universe_file
 from investment_box.forecast.calibration import CalibrationTracker
+from investment_box.forecast.track_record_store import TrackRecordStore
 from investment_box.services.container import ServiceContainer, build_services
 from investment_box.services.research import ResearchService, ResearchSnapshot
 from investment_box.services.settings_service import SettingsService
@@ -114,6 +115,14 @@ def get_research(strategy_name: str, _as_of: dt.date | None = None) -> ResearchS
         calibration=CalibrationTracker(services.database),
         clock=services.clock,
     )
+    # The same measured record the engine uses. If the dashboard loaded a
+    # different one it would show forecasts the engine would not act on, and
+    # the page exists to tell you what the engine is about to do.
+    for record in TrackRecordStore(services.database).load(
+        max_age_days=services.settings.engine.track_record_max_age_days,
+        now=services.clock.now(),
+    ).records:
+        research.register_track_record(record)
     holdings = tuple(p.symbol for p in services.portfolio.get_positions())
     return research.build(instruments, as_of=_as_of, current_holdings=holdings)
 

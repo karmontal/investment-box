@@ -177,6 +177,9 @@ def main(args: argparse.Namespace) -> int:
             )
         )
 
+    if args.save_track_record:
+        _persist_track_records(report, oos_start, oos_end)
+
     text = report.to_text()
     print("\n" + text)
 
@@ -188,6 +191,46 @@ def main(args: argparse.Namespace) -> int:
     if args.send:
         asyncio.run(_send(settings, report))
     return 0
+
+
+def _persist_track_records(report: BacktestReport, oos_start, oos_end) -> None:  # noqa: ANN001
+    """Store what each strategy actually achieved on unseen data.
+
+    Only walk-forward results are written as out-of-sample. That flag is what
+    the engine checks before it will act on a forecast, so setting it for
+    anything fitted in-sample would defeat the one guard that matters.
+    """
+    from investment_box.forecast.track_record_store import TrackRecordStore
+    from investment_box.services.container import build_services
+
+    services = build_services(configure_logs=False)
+    store = TrackRecordStore(services.database)
+
+    saved = 0
+    for result in report.results:
+        if result.metrics is None or result.metrics.start is None:
+            print(f"  skipped {result.strategy}: produced no measurable window")
+            continue
+        store.save(
+            result.metrics,
+            source="walk_forward_backtest",
+            out_of_sample=True,
+            measured_at=services.clock.now(),
+            notes="; ".join(result.caveats) or None,
+        )
+        saved += 1
+        wr = result.metrics.win_rate
+        print(
+            f"  saved {result.strategy}: {result.metrics.num_trades} trades, "
+            f"win rate {'n/a' if wr is None else f'{wr:.1%}'}, "
+            f"{oos_start} to {oos_end}"
+        )
+
+    if saved:
+        print(
+            f"\nStored {saved} out-of-sample record(s). The engine reads them at "
+            f"startup; restart it to pick them up."
+        )
 
 
 async def _send(settings, report: BacktestReport) -> None:  # noqa: ANN001
@@ -224,4 +267,13 @@ if __name__ == "__main__":
     parser.add_argument("--only", type=str, default=None, help="run one strategy by name")
     parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--send", action="store_true", help="post the summary to Telegram")
+    parser.add_argument(
+        "--save-track-record",
+        action="store_true",
+        help=(
+            "persist each strategy's out-of-sample result so the engine can act on "
+            "it. Without a stored record every forecast reads as a coin flip and "
+            "nothing trades."
+        ),
+    )
     raise SystemExit(main(parser.parse_args()))

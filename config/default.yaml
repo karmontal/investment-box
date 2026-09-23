@@ -106,6 +106,10 @@ engine:
   market_timezone: America/New_York
   # Signals are generated after the close and executed on the NEXT bar's open.
   signal_time: "16:15"
+  # A measured track record older than this is treated as absent: the engine
+  # reverts to "unmeasured strategy" and refuses to act on its forecasts.
+  # Re-run scripts/run_backtest.py --save-track-record to refresh it.
+  track_record_max_age_days: 90
   enabled: false                   # Phase 5 turns this on
 
 i18n:

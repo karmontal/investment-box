@@ -254,6 +254,11 @@ class EngineConfig(_Frozen):
     market_timezone: str = "America/New_York"
     signal_time: str = "16:15"
     enabled: bool = False
+    #: How long a measured track record stays admissible. Past this the engine
+    #: treats the strategy as unmeasured and stops acting on its forecasts.
+    #: Costs, spreads and the universe all drift, so a stale measurement is not
+    #: evidence about this week. Re-run the walk-forward backtest to refresh it.
+    track_record_max_age_days: int = Field(default=90, ge=1, le=3650)
 
     @field_validator("autonomy_level", mode="before")
     @classmethod
