@@ -4,13 +4,19 @@
 !.env.example
 config/local.yaml
 
-# Data & state
-data/
+# Data & state.
+# Anchored with a leading slash -- ON PURPOSE. An unanchored `data/` matches at
+# EVERY depth in git, so it silently swallowed src/investment_box/data/ and the
+# whole data layer was missing from the repository while every local test still
+# passed against the untracked files. Note this is NOT how .dockerignore reads
+# the same line: there, patterns are already anchored to the build context root.
+# Same text, different meaning, and that difference cost a broken deployment.
+/data/
 *.db
 *.db-journal
 *.sqlite3
-logs/
-reports/
+/logs/
+/reports/
 
 # Python
 __pycache__/
@@ -18,8 +24,8 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
-dist/
-build/
+/dist/
+/build/
 
 # Tooling caches
 .pytest_cache/
