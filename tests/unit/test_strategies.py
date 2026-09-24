@@ -18,6 +18,7 @@ from investment_box.features.pipeline import build_features
 from investment_box.features.regime import MarketRegime, RegimeState
 from investment_box.strategies import STRATEGY_REGISTRY
 from investment_box.strategies.base import Signal, StrategyContext
+from investment_box.strategies.defensive_core import DefensiveCore, DefensiveCoreConfig
 from investment_box.strategies.etf_momentum_rotation import (
     ETFMomentumRotation,
     MomentumRotationConfig,
@@ -225,3 +226,136 @@ class TestContextIsolation:
     def test_missing_symbol_returns_none(self) -> None:
         ctx = StrategyContext(as_of=AS_OF, features={})
         assert ctx.row("NOPE") is None
+
+
+class TestDefensiveCore:
+    """The strategy built to answer the measured problem: turnover.
+
+    The rotation strategy paid 56% of gross profit in costs across 230 trades.
+    This one is designed for a handful of trades a year, so the tests that
+    matter are about *not* trading: the hysteresis band, and refusing to rotate
+    into a defensive asset that is itself falling.
+    """
+
+    @staticmethod
+    def _bars(core_trend: float, defensive_trend: float) -> dict[str, pd.DataFrame]:
+        return {
+            "SPUS": make_bars(trend=core_trend, volatility=0.004, seed=3),
+            "SPSK": make_bars(trend=defensive_trend, volatility=0.002, seed=7),
+        }
+
+    def test_it_holds_the_core_in_a_clear_uptrend(self) -> None:
+        strategy = DefensiveCore()
+        decision = strategy.decide(context(self._bars(0.0012, 0.0002)))
+
+        assert decision.target_weights, decision.rationale
+        assert set(decision.target_weights) == {"SPUS"}
+        assert "above its 200-day average" in decision.rationale
+
+    def test_it_rotates_to_sukuk_when_the_core_breaks_and_sukuk_holds(self) -> None:
+        strategy = DefensiveCore()
+        decision = strategy.decide(self._downtrend_context(defensive_trend=0.0006))
+
+        assert set(decision.target_weights) == {"SPSK"}
+        assert "rotating" in decision.rationale
+
+    def test_it_holds_cash_when_the_defensive_asset_is_also_falling(self) -> None:
+        """2022: rate rises took sukuk down with equities. A rule that rotates
+        into a falling 'defensive' asset is a different way to lose."""
+        strategy = DefensiveCore()
+        decision = strategy.decide(self._downtrend_context(defensive_trend=-0.0010))
+
+        assert decision.is_flat
+        assert "also below its 200-day average" in decision.rationale
+
+    def test_the_guard_can_be_turned_off(self) -> None:
+        strategy = DefensiveCore(DefensiveCoreConfig(require_defensive_uptrend=False))
+        decision = strategy.decide(self._downtrend_context(defensive_trend=-0.0010))
+        assert set(decision.target_weights) == {"SPSK"}
+
+    def _downtrend_context(self, defensive_trend: float) -> StrategyContext:
+        return context(self._bars(-0.0012, defensive_trend))
+
+    # ------------------------------------------------------------ hysteresis
+
+    def test_inside_the_band_an_existing_holding_is_kept_untouched(self) -> None:
+        """The whole point. A single threshold at zero churns on every cross,
+        and at this account size those trades cost more than the signal."""
+        flat_bars = {
+            "SPUS": make_bars(trend=0.0, volatility=0.0005, seed=11),
+            "SPSK": make_bars(trend=0.0, volatility=0.0005, seed=12),
+        }
+        strategy = DefensiveCore(DefensiveCoreConfig(entry_band=0.50, exit_band=0.50))
+
+        decision = strategy.decide(context(flat_bars, current_holdings=("SPUS",)))
+        assert set(decision.target_weights) == {"SPUS"}
+        assert "inside the" in decision.rationale
+        assert "unchanged" in decision.rationale
+
+    def test_inside_the_band_holding_nothing_stays_holding_nothing(self) -> None:
+        flat_bars = {
+            "SPUS": make_bars(trend=0.0, volatility=0.0005, seed=11),
+            "SPSK": make_bars(trend=0.0, volatility=0.0005, seed=12),
+        }
+        strategy = DefensiveCore(DefensiveCoreConfig(entry_band=0.50, exit_band=0.50))
+
+        decision = strategy.decide(context(flat_bars))
+        assert decision.is_flat
+        assert "neither" in decision.rationale
+
+    def test_a_wider_band_never_produces_more_signals_than_a_narrow_one(self) -> None:
+        """Monotonicity: widening the band must not increase trading."""
+        bars = self._bars(0.0002, 0.0001)
+        narrow = DefensiveCore(DefensiveCoreConfig(entry_band=0.0, exit_band=0.0))
+        wide = DefensiveCore(DefensiveCoreConfig(entry_band=0.60, exit_band=0.60))
+
+        narrow_decision = narrow.decide(context(bars))
+        wide_decision = wide.decide(context(bars))
+
+        assert len(wide_decision.signals) <= len(narrow_decision.signals) or (
+            wide_decision.is_flat
+        )
+
+    # ------------------------------------------------------------- safety
+
+    def test_missing_core_data_holds_nothing_rather_than_assuming_an_uptrend(
+        self,
+    ) -> None:
+        strategy = DefensiveCore()
+        decision = strategy.decide(context({"SPSK": make_bars(0.001, 0.002, seed=5)}))
+
+        assert decision.is_flat
+        assert "holding nothing rather than assuming an uptrend" in decision.rationale
+
+    def test_missing_defensive_data_holds_cash_rather_than_an_unmeasured_asset(
+        self,
+    ) -> None:
+        strategy = DefensiveCore()
+        decision = strategy.decide(
+            context({"SPUS": make_bars(-0.0012, 0.004, seed=3)})
+        )
+
+        assert decision.is_flat
+        assert "unmeasured asset" in decision.rationale
+
+    def test_it_never_holds_both_sleeves_at_once(self) -> None:
+        strategy = DefensiveCore()
+        for core, defensive in ((0.0012, 0.0006), (-0.0012, 0.0006), (0.0, 0.0)):
+            decision = strategy.decide(context(self._bars(core, defensive)))
+            assert len(decision.target_weights) <= 1, decision.rationale
+
+    def test_weights_never_imply_leverage(self) -> None:
+        strategy = DefensiveCore(DefensiveCoreConfig(target_weight=1.0))
+        decision = strategy.decide(context(self._bars(0.0012, 0.0002)))
+        assert decision.total_weight <= 1.0
+
+    def test_a_negative_band_is_refused_at_construction(self) -> None:
+        """A negative band inverts the rule into buy-high-sell-low."""
+        with pytest.raises(ValueError, match="non-negative"):
+            DefensiveCore(DefensiveCoreConfig(entry_band=-0.01))
+
+    def test_every_decision_carries_a_reason(self) -> None:
+        strategy = DefensiveCore()
+        for core, defensive in ((0.0012, 0.0002), (-0.0012, 0.0006), (-0.0012, -0.001)):
+            decision = strategy.decide(context(self._bars(core, defensive)))
+            assert decision.rationale, "a silent decision cannot be audited"

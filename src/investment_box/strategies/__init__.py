@@ -10,6 +10,7 @@ from investment_box.strategies.base import (
     StrategyContext,
     StrategyDecision,
 )
+from investment_box.strategies.defensive_core import DefensiveCore, DefensiveCoreConfig
 from investment_box.strategies.etf_momentum_rotation import (
     ETFMomentumRotation,
     MomentumRotationConfig,
@@ -22,6 +23,7 @@ from investment_box.strategies.momentum_breakout import BreakoutConfig, Momentum
 #: without importing each one.
 STRATEGY_REGISTRY: dict[str, type[Strategy]] = {
     ETFMomentumRotation.name: ETFMomentumRotation,
+    DefensiveCore.name: DefensiveCore,
     MomentumBreakout.name: MomentumBreakout,
     MeanReversion.name: MeanReversion,
     MLClassifier.name: MLClassifier,
@@ -30,6 +32,8 @@ STRATEGY_REGISTRY: dict[str, type[Strategy]] = {
 __all__ = [
     "STRATEGY_REGISTRY",
     "BreakoutConfig",
+    "DefensiveCore",
+    "DefensiveCoreConfig",
     "ETFMomentumRotation",
     "MLClassifier",
     "MLConfig",

@@ -713,6 +713,64 @@ Two notes on what verification found, as of 2026-09-23:
 - **UMMA** is the one entry whose certifying board is still unresolved. The
   factsheet does not name it; the full prospectus or SAI will.
 
+## defensive_core, and what the measurement actually asked for
+
+The rotation strategy was measured, honestly, and found wanting: profit factor
+1.14, **56% of gross profit paid to costs** across 230 trades, 98% exposure,
+Sharpe 0.35 against 1.31 for simply holding SPUS. Read together those numbers
+say two things. Ranking eight highly correlated US Shariah equity ETFs adds
+nothing — SPUS and HLAL hold substantially the same companies, so there is no
+dispersion to exploit. And at this account size, turnover is the binding cost:
+$0.69 gross per trade against $0.39 to place it.
+
+`defensive_core` is built on both findings. It does not rank. It holds one core
+fund while that fund is above its 200-day average, steps into sukuk when it is
+not, and holds **cash** when sukuk is falling too — because in 2022 rate rises
+took sukuk down alongside equities, and rotating into a falling asset because
+it is nominally defensive is a different way to lose. A hysteresis band around
+the moving average is what keeps it to a handful of trades a year: a single
+threshold at zero churns on every crossing, and those trades cost more than the
+signal is worth.
+
+Measured over the same walk-forward windows:
+
+| | Return | Sharpe | Max DD | Trades | Costs |
+|---|---|---|---|---|---|
+| `defensive_core` | +66.5% | **1.37** | **−9.1%** | 18 | 4% of gross |
+| `etf_momentum_rotation` | +8.0% | 0.23 | −15.4% | 229 | 56% of gross |
+| buy & hold SPUS | **+137.7%** | 1.31 | −22.7% | 0 | — |
+
+**Read that table carefully, because it does not say what it first appears
+to.** Holding SPUS returned more than twice as much. The Sharpe ratios are
+indistinguishable — 1.37 against 1.31 on 18 trades is noise, not an edge. What
+is real, and large, is the drawdown: −9.1% against −22.7%.
+
+So this strategy does not beat buy-and-hold. It trades roughly half the return
+for roughly half the drawdown. Whether that is worth having depends on whether
+a 23% paper loss would make you abandon the plan — which is a question about
+you, not about the backtest.
+
+### Why the "too good to be true" flag is not dismissed
+
+The report flags this result, correctly: 18 trades and a 72% win rate are far
+too small a sample to trust. The check that distinguishes a real effect from a
+fitted one is whether it survives its own parameters:
+
+```bash
+uv run python scripts/sensitivity.py
+```
+
+Across a fivefold range of the band and both settings of the defensive guard,
+Sharpe stays within **1.12–1.35** and max drawdown within **−8.8% to −9.8%**.
+The result does not rest on a particular setting, which is necessary before
+trusting it and nowhere near sufficient.
+
+The caveat that remains is the sample. The out-of-sample window opens in
+October 2022 — within days of the bear-market bottom — so it is dominated by
+one long advance. A trend filter looks good in a trending market by
+construction. This strategy has never been measured through a 2008 or a 2020,
+and it will not have been until one happens.
+
 ## The track record, and why nothing traded without one
 
 The forecast layer refuses to act on a strategy nobody has measured: with no
