@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from investment_box.core.logging import configure_logging
 from investment_box.engine.runner import build_engine, run_forever
 from investment_box.services.container import build_services
+from investment_box.strategies import STRATEGY_REGISTRY
 from investment_box.telegram.bot import build_telegram_stack
 
 
@@ -42,7 +43,16 @@ async def main(args: argparse.Namespace) -> int:
         engine_state="starting",
     )
 
-    runner = build_engine(services, strategy_name=args.strategy, telegram=telegram)
+    # The flag wins when given, so a one-off run can differ from the
+    # deployment's configured choice without editing any file.
+    strategy_name = args.strategy or services.settings.engine.strategy
+    if strategy_name not in STRATEGY_REGISTRY:
+        raise SystemExit(
+            f"unknown strategy {strategy_name!r}. Available: "
+            f"{', '.join(sorted(STRATEGY_REGISTRY))}"
+        )
+
+    runner = build_engine(services, strategy_name=strategy_name, telegram=telegram)
     # /funds and the dashboard read the same rankings the engine acts on.
     telegram.handlers.ctx.research = runner.research
 
@@ -92,6 +102,10 @@ async def main(args: argparse.Namespace) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true", help="run one cycle and exit")
-    parser.add_argument("--strategy", default="etf_momentum_rotation")
+    parser.add_argument(
+        "--strategy",
+        default=None,
+        help="override engine.strategy from config for this run only",
+    )
     parser.add_argument("--log-level", default="INFO")
     raise SystemExit(asyncio.run(main(parser.parse_args())))

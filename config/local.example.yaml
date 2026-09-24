@@ -16,6 +16,12 @@ universe:
   whitelist: [SPUS, SPSK, HLAL]
 
 engine:
+  # Which strategy to run. `defensive_core` holds one core fund above its
+  # 200-day average and steps into sukuk (or cash) below it -- far fewer trades
+  # than the rotation strategies, which is the point at this account size.
+  # It needs BOTH its sleeves verified and whitelisted: SPUS and SPSK.
+  strategy: etf_momentum_rotation
+
   # 1 = suggest only, every order needs Telegram approval (a timeout rejects).
   # 2 = place whitelisted symbols without asking; everything else still asks.
   # 3 = no approval step at all, for any symbol.

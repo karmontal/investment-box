@@ -750,6 +750,34 @@ for roughly half the drawdown. Whether that is worth having depends on whether
 a 23% paper loss would make you abandon the plan — which is a question about
 you, not about the backtest.
 
+### Switching the engine to it
+
+Which strategy runs is a deployment choice, so it lives in `config/local.yaml`
+(gitignored) rather than in the compose file (tracked, and therefore a merge
+conflict on every pull):
+
+```yaml
+universe:
+  whitelist: [SPUS, SPSK, HLAL]   # defensive_core needs BOTH its sleeves here
+engine:
+  strategy: defensive_core
+```
+
+`--strategy` on the command line still overrides it for a one-off run. An
+unknown name fails at startup with the list of real ones rather than part way
+through a cycle.
+
+Two things must be true before it will trade, and the engine says so on start
+if they are not: **SPUS and SPSK both verified and both whitelisted** — a
+whitelist in force excludes everything not on it, so the sukuk sleeve is
+unreachable if you forget it — and a stored track record for `defensive_core`
+specifically, since records are per strategy:
+
+```bash
+docker compose exec -T engine python scripts/run_backtest.py --save-track-record
+docker compose restart engine
+```
+
 ### Why the "too good to be true" flag is not dismissed
 
 The report flags this result, correctly: 18 trades and a 72% win rate are far

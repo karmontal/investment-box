@@ -537,3 +537,55 @@ class TestUniverseEditsAreSeenWithoutARestart:
 
         monkeypatch.setattr(loader, "config_dir", lambda: tmp_path / "absent")
         assert _universe_fingerprint() == (0.0, 0)
+
+
+class TestStrategyIsChosenInConfig:
+    """Which strategy runs is a deployment choice, so it belongs in config.
+
+    Before this it was an argparse default, and docker-compose.yml passed no
+    `--strategy`. Switching therefore meant editing a tracked file, which
+    conflicts with every pull -- the same friction that already had
+    universe_etf.yaml showing as modified on the deployment box.
+    """
+
+    def test_the_shipped_default_is_unchanged(self) -> None:
+        from investment_box.config.loader import load_settings
+
+        assert load_settings().engine.strategy == "etf_momentum_rotation"
+
+    def test_a_deployment_can_choose_another_one(self, tmp_path: Path) -> None:
+        from investment_box.config.loader import config_dir, load_settings
+
+        local = tmp_path / "local.yaml"
+        local.write_text("engine:\n  strategy: defensive_core\n")
+
+        settings = load_settings(
+            config_path=config_dir() / "default.yaml", local_path=local
+        )
+        assert settings.engine.strategy == "defensive_core"
+
+    def test_every_configurable_name_actually_exists(self) -> None:
+        """A config key naming a strategy nobody wrote fails at startup, in a
+        container, at the least convenient moment."""
+        from investment_box.config.loader import load_settings
+        from investment_box.strategies import STRATEGY_REGISTRY
+
+        assert load_settings().engine.strategy in STRATEGY_REGISTRY
+
+    def test_the_documented_choices_all_resolve(self) -> None:
+        """default.yaml lists the options in a comment. Keep it true."""
+        from investment_box.config.loader import config_dir
+        from investment_box.strategies import STRATEGY_REGISTRY
+
+        comments = [
+            line for line in (config_dir() / "default.yaml").read_text().splitlines()
+            if line.strip().startswith("#")
+        ]
+        blob = " ".join(comments).replace("|", " ").replace(".", " ")
+        named = {token for token in blob.split() if token in STRATEGY_REGISTRY}
+
+        assert named, "the comment listing available strategies has drifted out of default.yaml"
+        assert named <= set(STRATEGY_REGISTRY), (
+            f"default.yaml documents strategies that do not exist: "
+            f"{named - set(STRATEGY_REGISTRY)}"
+        )

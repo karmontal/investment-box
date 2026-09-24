@@ -251,6 +251,12 @@ class DataConfig(_Frozen):
 
 class EngineConfig(_Frozen):
     autonomy_level: AutonomyLevel = AutonomyLevel.SUGGEST_ONLY
+    #: Which strategy the engine runs. Configurable so a deployment can choose
+    #: one in config/local.yaml, which is gitignored -- editing the compose
+    #: file instead would put deployment choices in a tracked file and conflict
+    #: with every pull. `--strategy` on the command line still wins, for a
+    #: one-off run. The name is validated against STRATEGY_REGISTRY at startup.
+    strategy: str = "etf_momentum_rotation"
     market_timezone: str = "America/New_York"
     signal_time: str = "16:15"
     enabled: bool = False

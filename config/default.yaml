@@ -105,6 +105,9 @@ engine:
   autonomy_level: 1                # 1 = suggest only | 2 = auto within whitelist | 3 = autonomous
   market_timezone: America/New_York
   # Signals are generated after the close and executed on the NEXT bar's open.
+  # etf_momentum_rotation | defensive_core | momentum_breakout | mean_reversion
+  # | ml_classifier.  Override per deployment in config/local.yaml.
+  strategy: etf_momentum_rotation
   signal_time: "16:15"
   # A measured track record older than this is treated as absent: the engine
   # reverts to "unmeasured strategy" and refuses to act on its forecasts.
